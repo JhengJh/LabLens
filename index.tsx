@@ -709,12 +709,17 @@ function App() {
     setError(null);
     try {
       const ai = new GoogleGenAI({ apiKey: apiKey });
-      const base64Data = image.split(',')[1];
+      
+      // Determine correct mime type from data URL
+      const match = image.match(/^data:(.+);base64,(.+)$/);
+      const mimeType = match ? match[1] : 'image/jpeg';
+      const base64Data = match ? match[2] : image.split(',')[1];
+
       const response = await ai.models.generateContent({
         model: 'gemini-2.0-flash',
         contents: {
           parts: [
-            { inlineData: { mimeType: 'image/jpeg', data: base64Data } },
+            { inlineData: { mimeType: mimeType, data: base64Data } },
             {
               text: `
                 You are an expert laboratory assistant reading a 96-well microplate reader data sheet.
@@ -747,7 +752,10 @@ function App() {
           }
         }
       });
-      const jsonText = response.text || "[]";
+      
+      // Sanitize response to remove any potential markdown code blocks
+      const jsonText = response.text ? response.text.replace(/```json|```/g, '').trim() : "[]";
+      
       const data = JSON.parse(jsonText);
       const normalizedData = data.map((item: any) => ({
         value: item.value,
@@ -758,7 +766,11 @@ function App() {
       setView('results');
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "Failed to extract data.");
+      if (err.message && err.message.includes('404')) {
+        setError("Model not found. Please check if your API key supports 'gemini-2.0-flash' or try a different key.");
+      } else {
+        setError(err.message || "Failed to extract data. Ensure image is clear.");
+      }
     } finally {
       setLoading(false);
     }
