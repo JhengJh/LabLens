@@ -69,7 +69,8 @@ const TRANSLATIONS = {
     save: "Save Key",
     getKey: "Get a free API key",
     missingKey: "API Key Missing",
-    missingKeyMsg: "Please set your Gemini API Key in the settings to analyze images."
+    missingKeyMsg: "Please set your Gemini API Key in the settings to analyze images.",
+    analysisFailed: "Analysis Failed"
   },
   zh: {
     appTitle: "LabLens",
@@ -125,7 +126,8 @@ const TRANSLATIONS = {
     save: "保存密钥",
     getKey: "获取免费 API 密钥",
     missingKey: "缺少 API 密钥",
-    missingKeyMsg: "请在设置中配置您的 Gemini API 密钥以开始分析图片。"
+    missingKeyMsg: "请在设置中配置您的 Gemini API 密钥以开始分析图片。",
+    analysisFailed: "分析失败"
   }
 };
 
@@ -766,11 +768,15 @@ function App() {
       setView('results');
     } catch (err: any) {
       console.error(err);
-      if (err.message && err.message.includes('404')) {
-        setError("Model not found. Please check if your API key supports 'gemini-2.0-flash' or try a different key.");
-      } else {
-        setError(err.message || "Failed to extract data. Ensure image is clear.");
+      let msg = err.message || "Failed to extract data.";
+      if (msg.includes('404') || msg.includes('not found')) {
+        msg = "Model 'gemini-2.0-flash' not found. Please check if your API key is valid or try a different one.";
+      } else if (msg.includes('400') || msg.includes('INVALID_ARGUMENT')) {
+        msg = "Invalid request. The image format might be unsupported or too large.";
+      } else if (msg.includes('403') || msg.includes('PERMISSION_DENIED')) {
+         msg = "Permission denied. The API key might be expired or restricted.";
       }
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -1103,11 +1109,23 @@ function App() {
                 )}
              </div>
              {!loading && (
-               <div className="bg-white dark:bg-[#09090b] p-6 border-t border-zinc-200 dark:border-zinc-800 flex justify-center gap-4 flex-none">
-                  <button onClick={() => setView('home')} className="px-8 py-3 rounded-xl font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">{t.discard}</button>
-                  <button onClick={processImage} className="px-8 py-3 rounded-xl font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 transition-all flex items-center gap-2">
-                    {t.analyze} <ChevronRight size={18}/>
-                  </button>
+               <div className="bg-white dark:bg-[#09090b] p-6 border-t border-zinc-200 dark:border-zinc-800 flex flex-col items-center flex-none">
+                  {error && (
+                    <div className="w-full max-w-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-3 rounded-xl text-sm flex items-start gap-3 mb-4 animate-in fade-in slide-in-from-bottom-2">
+                       <AlertTriangle size={18} className="shrink-0 mt-0.5"/>
+                       <div className="flex-1">
+                         <p className="font-bold mb-1">{t.analysisFailed}</p>
+                         <p className="opacity-90">{error}</p>
+                       </div>
+                       <button onClick={() => setError(null)} className="p-1 hover:bg-red-100 dark:hover:bg-red-900/40 rounded"><X size={14}/></button>
+                    </div>
+                  )}
+                  <div className="flex justify-center gap-4 w-full">
+                    <button onClick={() => setView('home')} className="px-8 py-3 rounded-xl font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">{t.discard}</button>
+                    <button onClick={processImage} className="px-8 py-3 rounded-xl font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 transition-all flex items-center gap-2">
+                       {t.analyze} <ChevronRight size={18}/>
+                    </button>
+                  </div>
                </div>
              )}
           </div>
