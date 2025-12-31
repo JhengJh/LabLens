@@ -217,6 +217,49 @@ const GROUP_COLORS = [
 
 // --- Helper Functions ---
 
+// Resize and compress image to avoid payload limits
+const compressImage = (dataUrl: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+      const MAX_DIMENSION = 1024; // Adequate for OCR, significantly reduces size
+
+      if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+        if (width > height) {
+          height = Math.round((height / width) * MAX_DIMENSION);
+          width = MAX_DIMENSION;
+        } else {
+          width = Math.round((width / height) * MAX_DIMENSION);
+          height = MAX_DIMENSION;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+         resolve(dataUrl); 
+         return;
+      }
+      // Fill white background (safe for PNGs with transparency converted to JPEG)
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+      
+      // Export as JPEG with 0.8 quality
+      resolve(canvas.toDataURL('image/jpeg', 0.8));
+    };
+    img.onerror = (e) => {
+        console.error("Image compression error", e);
+        resolve(dataUrl); // Fallback to original
+    };
+    img.src = dataUrl;
+  });
+};
+
 function calculateLinearFit(points: StdCurvePoint[]): FitResult | null {
   const validPoints = points
     .map(p => ({ x: parseFloat(p.x), y: parseFloat(p.y) }))
@@ -710,12 +753,15 @@ function App() {
     setLoading(true);
     setError(null);
     try {
+      // 1. Compress Image
+      const compressedImage = await compressImage(image);
+      
       const ai = new GoogleGenAI({ apiKey: apiKey });
       
-      // Determine correct mime type from data URL
-      const match = image.match(/^data:(.+);base64,(.+)$/);
+      // Determine correct mime type from compressed data URL (guaranteed to be jpeg/png from canvas)
+      const match = compressedImage.match(/^data:(.+);base64,(.+)$/);
       const mimeType = match ? match[1] : 'image/jpeg';
-      const base64Data = match ? match[2] : image.split(',')[1];
+      const base64Data = match ? match[2] : compressedImage.split(',')[1];
 
       const response = await ai.models.generateContent({
         model: 'gemini-2.0-flash',
