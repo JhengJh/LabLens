@@ -772,7 +772,7 @@ function App() {
       while (true) {
         try {
           response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash',
+            model: 'gemini-flash-latest',
             contents: {
               parts: [
                 { inlineData: { mimeType: mimeType, data: base64Data } },
@@ -838,7 +838,7 @@ function App() {
       console.error(err);
       let msg = err.message || "Failed to extract data.";
       if (msg.includes('404') || msg.includes('not found')) {
-        msg = "Model 'gemini-1.5-flash' not found. Please check if your API key is valid or try a different one.";
+        msg = "Model 'gemini-flash-latest' not found. Please check if your API key is valid or try a different one.";
       } else if (msg.includes('400') || msg.includes('INVALID_ARGUMENT')) {
         msg = "Invalid request. The image format might be unsupported or too large.";
       } else if (msg.includes('403') || msg.includes('PERMISSION_DENIED')) {
