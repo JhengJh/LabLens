@@ -217,6 +217,8 @@ const GROUP_COLORS = [
 
 // --- Helper Functions ---
 
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 // Resize and compress image to avoid payload limits
 const compressImage = (dataUrl: string): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -763,43 +765,63 @@ function App() {
       const mimeType = match ? match[1] : 'image/jpeg';
       const base64Data = match ? match[2] : compressedImage.split(',')[1];
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: {
-          parts: [
-            { inlineData: { mimeType: mimeType, data: base64Data } },
-            {
-              text: `
-                You are an expert laboratory assistant reading a 96-well microplate reader data sheet.
-                Your Task: Extract measurement values and map them to their specific Grid Coordinates (Row A-H, Column 1-12).
-                CRITICAL RULES:
-                1. **Grid Structure**: The data represents an 8-row (A-H) by 12-column (1-12) matrix.
-                2. **Coordinates**: For every measurement found, you MUST identify its 'row' (A, B, C...) and 'col' (1, 2, 3...) based on its position.
-                3. **Ignore Metadata**: Do NOT treat axis labels or indices as data. Only extract measurements (decimals).
-                4. **Empty Wells**: If a well is empty, DO NOT include it.
-                5. **Precision**: Maintain exact decimal places.
-                Output: JSON Array of objects { value, row, col }.
-              `
+      let response;
+      let retryCount = 0;
+      const maxRetries = 3;
+
+      while (true) {
+        try {
+          response = await ai.models.generateContent({
+            model: 'gemini-1.5-flash',
+            contents: {
+              parts: [
+                { inlineData: { mimeType: mimeType, data: base64Data } },
+                {
+                  text: `
+                    You are an expert laboratory assistant reading a 96-well microplate reader data sheet.
+                    Your Task: Extract measurement values and map them to their specific Grid Coordinates (Row A-H, Column 1-12).
+                    CRITICAL RULES:
+                    1. **Grid Structure**: The data represents an 8-row (A-H) by 12-column (1-12) matrix.
+                    2. **Coordinates**: For every measurement found, you MUST identify its 'row' (A, B, C...) and 'col' (1, 2, 3...) based on its position.
+                    3. **Ignore Metadata**: Do NOT treat axis labels or indices as data. Only extract measurements (decimals).
+                    4. **Empty Wells**: If a well is empty, DO NOT include it.
+                    5. **Precision**: Maintain exact decimal places.
+                    Output: JSON Array of objects { value, row, col }.
+                  `
+                }
+              ]
+            },
+            config: {
+              temperature: 0,
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    row: { type: Type.STRING },
+                    col: { type: Type.INTEGER }
+                  },
+                  required: ["value", "row", "col"]
+                }
+              }
             }
-          ]
-        },
-        config: {
-          temperature: 0,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                value: { type: Type.STRING },
-                row: { type: Type.STRING },
-                col: { type: Type.INTEGER }
-              },
-              required: ["value", "row", "col"]
-            }
-          }
+          });
+          break; // Success, exit loop
+        } catch (e: any) {
+           const isRateLimit = e.message?.includes('429') || e.status === 429 || e.message?.includes('quota') || e.message?.includes('RESOURCE_EXHAUSTED');
+           
+           if (isRateLimit && retryCount < maxRetries) {
+             retryCount++;
+             const delayTime = Math.pow(2, retryCount) * 1000 + (Math.random() * 500); // Exponential backoff + jitter
+             console.log(`Rate limit hit (Attempt ${retryCount}/${maxRetries}). Retrying in ${delayTime.toFixed(0)}ms...`);
+             await wait(delayTime);
+             continue;
+           }
+           throw e; // Non-retriable or max retries exceeded
         }
-      });
+      }
       
       // Sanitize response to remove any potential markdown code blocks
       const jsonText = response.text ? response.text.replace(/```json|```/g, '').trim() : "[]";
@@ -816,11 +838,13 @@ function App() {
       console.error(err);
       let msg = err.message || "Failed to extract data.";
       if (msg.includes('404') || msg.includes('not found')) {
-        msg = "Model 'gemini-2.0-flash' not found. Please check if your API key is valid or try a different one.";
+        msg = "Model 'gemini-1.5-flash' not found. Please check if your API key is valid or try a different one.";
       } else if (msg.includes('400') || msg.includes('INVALID_ARGUMENT')) {
         msg = "Invalid request. The image format might be unsupported or too large.";
       } else if (msg.includes('403') || msg.includes('PERMISSION_DENIED')) {
          msg = "Permission denied. The API key might be expired or restricted.";
+      } else if (msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
+         msg = "API Quota Exceeded (Rate Limit). You are using a free tier key which has strict limits. Please wait ~1 minute before trying again.";
       }
       setError(msg);
     } finally {
