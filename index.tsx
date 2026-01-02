@@ -1222,12 +1222,12 @@ function App() {
                         // === DESKTOP LAYOUT (Rotated 90 deg / Transposed) ===
                         // 8 Columns (A-H), 12 Rows (1-12)
                         <div className="w-full max-w-[420px] flex flex-col">
-                             {/* Transposed Header (A-H) */}
-                             <div className="grid grid-cols-[auto_repeat(8,1fr)] gap-1 mb-1 pr-0.5">
-                                <div className="w-5"></div>
-                                {ROW_HEADERS.map((r, i) => (
+                             {/* Transposed Header (A-H) - Modified: A-H Right to Left, Numbers on Right */}
+                             <div className="grid grid-cols-[repeat(8,1fr)_auto] gap-1 mb-1 pr-0.5">
+                                {[...ROW_HEADERS].reverse().map((r, i) => (
                                     <div key={i} className="text-center text-xs font-bold text-zinc-400">{r}</div>
                                 ))}
+                                <div className="w-5"></div>
                              </div>
                              
                              {/* Transposed Body (Rows 1-12) */}
@@ -1235,11 +1235,11 @@ function App() {
                                 {Array.from({ length: 12 }).map((_, colIndex) => {
                                     const colNum = colIndex + 1;
                                     return (
-                                      <div key={colNum} className="grid grid-cols-[auto_repeat(8,1fr)] gap-1">
-                                          {/* Row Label (1-12) */}
+                                      <div key={colNum} className="grid grid-cols-[repeat(8,1fr)_auto] gap-1">
+                                          {/* Cells (H..A for this number) */}
+                                          {[...ROW_HEADERS].reverse().map(rowChar => renderPlateCell(rowChar, colNum))}
+                                          {/* Row Label (1-12) - Moved to Right */}
                                           <div className="w-5 flex items-center justify-center text-xs font-bold text-zinc-400">{colNum}</div>
-                                          {/* Cells (A..H for this number) */}
-                                          {ROW_HEADERS.map(rowChar => renderPlateCell(rowChar, colNum))}
                                       </div>
                                     )
                                 })}
