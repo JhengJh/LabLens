@@ -442,15 +442,8 @@ function App() {
 
   const processImage = async () => {
     if (!image) return;
-    
-    // API KEY LOGIC: Use custom key if available, otherwise env var
     const apiKeyToUse = customApiKey || process.env.API_KEY;
-    
-    if (!apiKeyToUse) {
-      setError(t.missingKey);
-      setShowSettings(true);
-      return;
-    }
+    if (!apiKeyToUse) { setError(t.missingKey); setShowSettings(true); return; }
 
     setLoading(true); setError(null);
     try {
@@ -482,15 +475,7 @@ function App() {
       try {
         const wsData: any[][] = [[t.reportTitle, new Date().toLocaleString()], [], [t.rawMatrix]];
         const colLabels = ["", ...Array.from({length: 12}, (_, i) => (i+1).toString())]; wsData.push(colLabels);
-        ROW_HEADERS.forEach(r => { 
-          // Fixed: explicitly type the row data array to allow mixed strings and numbers, preventing inference as string[]
-          const rd: (string | number)[] = [r]; 
-          for(let i=1; i<=12; i++) { 
-            const c = results.find(it => it.row === r && it.col === i); 
-            rd.push(c ? parseFloat(c.value) : ""); 
-          } 
-          wsData.push(rd); 
-        });
+        ROW_HEADERS.forEach(r => { const rd: (string | number)[] = [r]; for(let i=1; i<=12; i++) { const c = results.find(it => it.row === r && it.col === i); rd.push(c ? parseFloat(c.value) : ""); } wsData.push(rd); });
         wsData.push([], [t.sampleTable], [t.newGroup, "Well", t.dil, t.od, t.conc, t.mean, t.sd, t.cv]);
         unknownGroups.forEach(g => { const stats = calculateStats(g.wells.map(w => calculateConc(w.od, fitResult, w.dilution))); g.wells.forEach((w, i) => wsData.push([g.name, `${w.row}${w.col}`, w.dilution, w.od, calculateConc(w.od, fitResult, w.dilution), i===0?stats.mean:"", i===0?stats.sd:"", i===0?stats.cv:""])); });
         const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wsData), "Analysis"); XLSX.writeFile(wb, `LabLens_${Date.now()}.xlsx`);
@@ -499,59 +484,24 @@ function App() {
   };
 
   const fitResult = useMemo(() => calculateLinearFit(stdCurvePoints), [stdCurvePoints]);
-  const totalSampleCount = useMemo(() => unknownGroups.reduce((acc, g) => acc + g.wells.length, 0), [unknownGroups]);
   const fitQuality = fitResult ? getFitQuality(fitResult.r2) : 'neutral';
 
   const updateWellValue = (row: string, col: number, value: string) => {
-    setResults(prev => {
-      const existingIdx = prev.findIndex(p => p.row === row && p.col === col);
-      if (existingIdx !== -1) {
-        const next = [...prev];
-        next[existingIdx] = { ...next[existingIdx], value };
-        return next;
-      } else {
-        return [...prev, { row, col, value }];
-      }
-    });
-    // Trigger update for linked selections (std curve or samples)
-    setStdCurvePoints(prev => prev.map(p => {
-       if (p.sourceWellId === `${row}-${col}`) return { ...p, y: value };
-       return p;
-    }));
-    setUnknownGroups(prev => prev.map(g => ({
-      ...g,
-      wells: g.wells.map(w => {
-        if (w.row === row && w.col === col) return { ...w, od: parseFloat(value) || 0 };
-        return w;
-      })
-    })));
+    setResults(prev => { const existingIdx = prev.findIndex(p => p.row === row && p.col === col); if (existingIdx !== -1) { const next = [...prev]; next[existingIdx] = { ...next[existingIdx], value }; return next; } else { return [...prev, { row, col, value }]; } });
+    setStdCurvePoints(prev => prev.map(p => { if (p.sourceWellId === `${row}-${col}`) return { ...p, y: value }; return p; }));
+    setUnknownGroups(prev => prev.map(g => ({ ...g, wells: g.wells.map(w => { if (w.row === row && w.col === col) return { ...w, od: parseFloat(value) || 0 }; return w; }) })));
   };
 
   const handleCellClick = (row: string, col: number) => {
     const item = results.find(it => it.row === row && it.col === col);
     const val = item ? item.value : "";
     const cellId = `${row}-${col}`;
-    
-    // Only handle selection logic if not focusing to type
-    // But since we use onFocus for input, this runs onClick which might conflict
-    // Actually, let's keep selection logic on click/focus interaction
-    
     if (selectionTarget === 'std' && isStdSelecting) {
       const idx = stdCurvePoints.findIndex(p => p.sourceWellId === cellId);
-      if (idx !== -1) {
-        setStdCurvePoints(prev => { const next = [...prev]; next[idx] = { ...next[idx], y: '', sourceWellId: undefined }; return next; });
-      } else {
-        const emptyIdx = stdCurvePoints.findIndex(p => !p.sourceWellId); // Find next available slot that isn't linked
-        if (emptyIdx !== -1) {
-          setStdCurvePoints(prev => { const next = [...prev]; next[emptyIdx] = { ...next[emptyIdx], y: val, sourceWellId: cellId }; return next; });
-        }
-      }
+      if (idx !== -1) { setStdCurvePoints(prev => { const next = [...prev]; next[idx] = { ...next[idx], y: '', sourceWellId: undefined }; return next; }); } 
+      else { const emptyIdx = stdCurvePoints.findIndex(p => !p.sourceWellId); if (emptyIdx !== -1) { setStdCurvePoints(prev => { const next = [...prev]; next[emptyIdx] = { ...next[emptyIdx], y: val, sourceWellId: cellId }; return next; }); } }
     } else if (selectionTarget === 'sample' && editingGroupId) {
-      setUnknownGroups(prev => prev.map(g => {
-        if (g.id !== editingGroupId) return { ...g, wells: g.wells.filter(w => w.row !== row || w.col !== col) };
-        const exists = g.wells.find(w => w.row === row && w.col === col);
-        return { ...g, wells: exists ? g.wells.filter(w => w.row !== row || w.col !== col) : [...g.wells, { row, col, od: parseFloat(val) || 0, dilution: g.commonDilution }].sort((a, b) => a.row.localeCompare(b.row) || a.col - b.col) };
-      }));
+      setUnknownGroups(prev => prev.map(g => { if (g.id !== editingGroupId) return { ...g, wells: g.wells.filter(w => w.row !== row || w.col !== col) }; const exists = g.wells.find(w => w.row === row && w.col === col); return { ...g, wells: exists ? g.wells.filter(w => w.row !== row || w.col !== col) : [...g.wells, { row, col, od: parseFloat(val) || 0, dilution: g.commonDilution }].sort((a, b) => a.row.localeCompare(b.row) || a.col - b.col) }; }));
     }
   };
 
@@ -561,38 +511,18 @@ function App() {
     const stdIdx = stdCurvePoints.findIndex(p => p.sourceWellId === cellId);
     const group = unknownGroups.find(g => g.wells.some(w => w.row === row && w.col === col));
     const gColor = group ? GROUP_COLORS.find(c => c.name === group.color) : null;
-    
-    // Determine if we are in a selection mode
     const isSelecting = (selectionTarget === 'std' && isStdSelecting) || (selectionTarget === 'sample' && editingGroupId !== null);
 
-    // Optimization: Cleaner conditional logic for cell styling
     let bgClass = 'bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-sm';
     let textClass = 'text-zinc-600 dark:text-zinc-300 placeholder-zinc-300';
-    let ringClass = '';
-
-    if (stdIdx !== -1) {
-      bgClass = 'bg-indigo-600 border-indigo-600 shadow-md shadow-indigo-500/30';
-      textClass = 'text-white placeholder-white/50 font-bold';
-    } else if (gColor) {
-      bgClass = `${gColor.bg} ${gColor.border} shadow-md shadow-${gColor.name}-500/30`;
-      textClass = 'text-white placeholder-white/50 font-bold';
-    } else if (!item) {
-       bgClass = 'bg-zinc-50 dark:bg-zinc-800/40 border-zinc-100 dark:border-zinc-800';
-    }
+    
+    if (stdIdx !== -1) { bgClass = 'bg-indigo-600 border-indigo-600 shadow-md shadow-indigo-500/30'; textClass = 'text-white placeholder-white/50 font-bold'; }
+    else if (gColor) { bgClass = `${gColor.bg} ${gColor.border} shadow-md shadow-${gColor.name}-500/30`; textClass = 'text-white placeholder-white/50 font-bold'; }
+    else if (!item) { bgClass = 'bg-zinc-50 dark:bg-zinc-800/40 border-zinc-100 dark:border-zinc-800'; }
 
     return (
-      <div key={cellId} 
-           onClick={() => handleCellClick(row, col)}
-           className={`relative w-full aspect-square rounded-full flex items-center justify-center transition-all cursor-pointer hover:scale-[1.05] active:scale-95 z-0 hover:z-10 ${bgClass} ${ringClass}`}> {/* Removed overflow-hidden */}
-        
-        <input 
-          type="text" 
-          className={`w-full h-full bg-transparent text-center text-[10px] lg:text-[11px] font-mono outline-none p-0 transform origin-center rounded-full ${textClass} ${isSelecting ? 'cursor-pointer' : ''}`}
-          value={item?.value || ''}
-          placeholder="-"
-          onChange={(e) => updateWellValue(row, col, e.target.value)}
-        />
-        
+      <div key={cellId} onClick={() => handleCellClick(row, col)} className={`relative w-[95%] aspect-square rounded-full flex items-center justify-center transition-all cursor-pointer hover:scale-[1.05] active:scale-95 z-0 hover:z-10 mx-auto ${bgClass}`}> 
+        <input type="text" className={`w-full h-full bg-transparent text-center text-[10px] lg:text-[11px] font-mono outline-none p-0 transform origin-center rounded-full ${textClass} ${isSelecting ? 'cursor-pointer' : ''}`} value={item?.value || ''} placeholder="-" onChange={(e) => updateWellValue(row, col, e.target.value)}/>
         {stdIdx !== -1 && <span className="absolute top-0.5 right-0.5 w-3 h-3 bg-white text-indigo-600 text-[8px] rounded-full flex items-center justify-center font-bold z-10 shadow-sm">{stdIdx+1}</span>}
       </div>
     );
@@ -600,13 +530,7 @@ function App() {
 
   return (
     <div className="h-screen h-[100dvh] w-full flex flex-col bg-[#f8fafc] dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 transition-colors overflow-hidden">
-      <SettingsModal 
-        isOpen={showSettings} 
-        onClose={() => setShowSettings(false)} 
-        t={t} 
-        apiKey={customApiKey} 
-        setApiKey={handleSetApiKey} 
-      />
+      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} t={t} apiKey={customApiKey} setApiKey={handleSetApiKey} />
       
       {/* --- DASHBOARD HEADER --- */}
       <header className="flex-none h-16 px-6 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between shadow-sm z-50">
@@ -615,25 +539,13 @@ function App() {
           <div><h1 className="font-extrabold text-xl tracking-tight leading-none">{t.appTitle}</h1><p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mt-1">Research Workspace</p></div>
         </div>
         <div className="flex items-center gap-2">
-          {view === 'results' && (
-            <button onClick={handleExport} disabled={exporting} className="hidden md:flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 active:scale-95 transition-all mr-2">
-              {exporting ? <Loader2 size={16} className="animate-spin"/> : <FileSpreadsheet size={16}/>} 
-              {t.export}
-            </button>
-          )}
-
-          {/* Model Selector - Visible on all views */}
+          {view === 'results' && (<button onClick={handleExport} disabled={exporting} className="hidden md:flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 active:scale-95 transition-all mr-2">{exporting ? <Loader2 size={16} className="animate-spin"/> : <FileSpreadsheet size={16}/>} {t.export}</button>)}
           <div className="hidden sm:flex items-center mr-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg p-0.5">
-            <select 
-               value={selectedModel}
-               onChange={(e) => setSelectedModel(e.target.value)}
-               className="bg-transparent text-[10px] font-bold text-zinc-600 dark:text-zinc-300 rounded-md px-2 py-1.5 outline-none border-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
-            >
+            <select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)} className="bg-transparent text-[10px] font-bold text-zinc-600 dark:text-zinc-300 rounded-md px-2 py-1.5 outline-none border-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">
                <option value="gemini-flash-latest">{t.modelFlash}</option>
                <option value="gemini-3-pro-preview">{t.modelPro}</option>
             </select>
           </div>
-
           <button onClick={() => setShowSettings(true)} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg text-zinc-500 transition-colors"><Settings size={20}/></button>
           <button onClick={() => setLang(l => l === 'en' ? 'zh' : 'en')} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg text-zinc-500 transition-colors"><Languages size={20}/></button>
           <button onClick={() => setTheme(th => th === 'dark' ? 'light' : 'dark')} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg text-zinc-500 transition-colors">{theme === 'dark' ? <Sun size={20}/> : <Moon size={20}/>}</button>
@@ -646,11 +558,7 @@ function App() {
           <div className="h-full flex flex-col items-center justify-center p-6 animate-in fade-in duration-500">
             <div className="text-center mb-8"><h2 className="text-3xl lg:text-4xl font-black mb-2 text-zinc-800 dark:text-zinc-100">{t.subtitle}</h2><p className="text-zinc-400 font-medium text-sm">{t.desc}</p></div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full max-w-2xl">
-              {[
-                { icon: <Camera size={24}/>, title: t.scanPlate, sub: t.useCamera, action: () => setView('camera'), primary: true },
-                { icon: <Upload size={24}/>, title: t.uploadImage, sub: t.fromGallery, action: () => document.getElementById('fileInput')?.click() },
-                { icon: <Keyboard size={24}/>, title: t.manualEntry, sub: t.noImage, action: () => setView('results') }
-              ].map((card, i) => (
+              {[{ icon: <Camera size={24}/>, title: t.scanPlate, sub: t.useCamera, action: () => setView('camera'), primary: true }, { icon: <Upload size={24}/>, title: t.uploadImage, sub: t.fromGallery, action: () => document.getElementById('fileInput')?.click() }, { icon: <Keyboard size={24}/>, title: t.manualEntry, sub: t.noImage, action: () => setView('results') }].map((card, i) => (
                 <button key={i} onClick={card.action} className={`group p-6 rounded-2xl flex flex-col items-center gap-3 transition-all hover:-translate-y-1 shadow-lg shadow-zinc-200/50 dark:shadow-none border ${card.primary ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-white dark:bg-zinc-900 border-zinc-100 dark:border-zinc-800'}`}>
                   <div className={`p-3 rounded-xl ${card.primary ? 'bg-white/20' : 'bg-zinc-50 dark:bg-zinc-800 text-indigo-600'}`}>{card.icon}</div>
                   <div className="text-center"><div className="text-base font-bold">{card.title}</div><div className={`text-[10px] uppercase tracking-wider mt-1 opacity-70 ${card.primary ? 'text-indigo-100' : ''}`}>{card.sub}</div></div>
@@ -661,44 +569,47 @@ function App() {
           </div>
         )}
 
+        {view === 'preview' && image && (
+          <div className="h-full flex flex-col p-6 animate-in fade-in duration-300">
+            <div className="flex-1 relative rounded-3xl overflow-hidden bg-black border border-zinc-800 shadow-2xl group">
+              <img src={image} className="w-full h-full object-contain opacity-50 group-hover:opacity-70 transition-opacity duration-500" />
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-8 bg-gradient-to-t from-black/80 via-transparent to-black/20">
+                {error ? (
+                  <div className="bg-red-500/10 backdrop-blur-md border border-red-500/20 p-6 rounded-2xl max-w-md text-center"><AlertTriangle className="mx-auto text-red-400 mb-2" size={32}/><p className="text-red-200 font-medium">{error}</p><button onClick={processImage} className="mt-4 px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-200 rounded-lg text-sm font-bold transition-all">Retry</button></div>
+                ) : (
+                  <div className="text-center">{loading ? (<div className="flex flex-col items-center gap-4"><Loader2 size={48} className="text-white animate-spin"/><p className="text-white font-medium text-lg tracking-wide animate-pulse">{t.analyzing}</p></div>) : (<button onClick={processImage} className="group relative px-8 py-4 bg-white text-black rounded-full font-bold text-lg shadow-[0_0_40px_-10px_rgba(255,255,255,0.3)] hover:scale-105 active:scale-95 transition-all flex items-center gap-3"><Sparkles size={20} className="text-indigo-600"/> {t.analyze}<div className="absolute inset-0 rounded-full ring-2 ring-white/20 group-hover:ring-white/40 transition-all"/></button>)}</div>
+                )}
+              </div>
+              <button onClick={reset} className="absolute top-6 left-6 p-3 bg-black/50 backdrop-blur text-white rounded-full hover:bg-black/70 transition-all"><ArrowLeft size={24}/></button>
+            </div>
+          </div>
+        )}
+
         {view === 'camera' && <CameraView onCapture={(img) => { setImage(img); setView('preview'); }} onBack={() => setView('home')} t={t}/>}
 
         {view === 'results' && (
           <div className="h-full flex flex-col p-4 lg:p-6 gap-6 overflow-y-auto pb-24">
-            
-            {/* --- DASHBOARD GRID --- */}
             <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
-              
-              {/* PANEL 1: PLATE EXPLORER - ENLARGED (Left Side) */}
+              {/* PANEL 1: PLATE EXPLORER */}
               <div className="lg:col-span-7 xl:col-span-8 bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 flex flex-col shadow-sm transition-all relative xl:h-full xl:overflow-hidden h-auto min-h-[500px]">
                 <div className="p-4 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center h-[60px] flex-none bg-white dark:bg-zinc-900 z-10 relative">
-                  <h3 className="font-bold flex items-center gap-2 text-zinc-700 dark:text-zinc-200 text-sm">
-                    <LayoutGrid size={18} className="text-zinc-400"/> {t.plateMap}
-                  </h3>
+                  <h3 className="font-bold flex items-center gap-2 text-zinc-700 dark:text-zinc-200 text-sm"><LayoutGrid size={18} className="text-zinc-400"/> {t.plateMap}</h3>
                 </div>
-                {/* Scrollable Container for Mobile/Tablet - Hidden overflow on XL to force fit */}
-                <div className="flex-1 p-1 sm:p-6 flex flex-col bg-zinc-50/50 dark:bg-zinc-950/20 xl:overflow-auto overflow-visible">
-                   {/* Grid Wrapper */}
+                {/* UPDATED: Added p-[10%] for 10% whitespace padding */}
+                <div className="flex-1 p-[10%] flex flex-col items-center justify-center bg-zinc-50/50 dark:bg-zinc-950/20 xl:overflow-auto overflow-visible">
                    <div className={`min-w-fit w-full flex flex-col justify-center max-w-4xl mx-auto transition-all duration-300 ${showStandardGrid ? 'max-w-[95vh]' : ''}`}>
                     {!showStandardGrid ? (
-                      // --- MOBILE/PHONE PORTRAIT TRANSPOSED VIEW (8 cols x 12 rows) ---
                       <>
-                        {/* Header Row: H-A (Horizontal Reversed) + Row Label Spacer */}
                         <div className="grid grid-cols-[repeat(8,1fr)_auto] gap-px sm:gap-1 mb-1">
-                          {[...ROW_HEADERS].reverse().map((char, i) => (
-                            <div key={i} className="text-center text-[10px] sm:text-xs font-bold text-zinc-400 select-none">{char}</div>
-                          ))}
-                          <div className="w-6 sm:w-8"></div> {/* Spacer for Right Aligned Labels */}
+                          {[...ROW_HEADERS].reverse().map((char, i) => (<div key={i} className="text-center text-[10px] sm:text-xs font-bold text-zinc-400 select-none">{char}</div>))}
+                          <div className="w-6 sm:w-8"></div>
                         </div>
-                        {/* Rows: 1-12 (Vertical) */}
                         <div className="flex flex-col justify-start gap-px sm:gap-1">
                           {Array.from({length: 12}).map((_, rIdx) => {
                             const rowNum = rIdx + 1;
                             return (
                               <div key={rowNum} className="grid grid-cols-[repeat(8,1fr)_auto] gap-px sm:gap-1 items-center">
-                                {/* Cells: H-A (Reversed) */}
                                 {[...ROW_HEADERS].reverse().map((rowChar) => renderPlateCell(rowChar, rowNum))}
-                                {/* Row Number: Right Aligned */}
                                 <div className="w-6 sm:w-8 flex items-center justify-center text-[10px] sm:text-xs font-bold text-zinc-400 select-none">{rowNum}</div>
                               </div>
                             );
@@ -706,16 +617,11 @@ function App() {
                         </div>
                       </>
                     ) : (
-                      // --- DESKTOP/TABLET/LANDSCAPE STANDARD VIEW (12 cols x 8 rows) ---
                       <>
-                        {/* Header Row: 1-12 */}
                         <div className="grid grid-cols-[auto_repeat(12,1fr)] gap-px sm:gap-1 mb-1">
                            <div className="w-6 sm:w-8"></div>
-                           {Array.from({length: 12}).map((_, i) => (
-                             <div key={i} className="text-center text-[10px] sm:text-xs font-bold text-zinc-400 select-none">{i+1}</div>
-                           ))}
+                           {Array.from({length: 12}).map((_, i) => (<div key={i} className="text-center text-[10px] sm:text-xs font-bold text-zinc-400 select-none">{i+1}</div>))}
                         </div>
-                        {/* Rows: A-H */}
                         <div className="flex flex-col justify-start gap-px sm:gap-1 lg:flex-1">
                           {ROW_HEADERS.map((rowChar, rIdx) => (
                             <div key={rowChar} className="grid grid-cols-[auto_repeat(12,1fr)] gap-px sm:gap-1 items-center lg:flex-1">
@@ -730,123 +636,48 @@ function App() {
                 </div>
               </div>
 
-              {/* PANEL 2: ANALYSIS & SAMPLES - MERGED TABBED MODULE (Right Side) */}
+              {/* PANEL 2: ANALYSIS */}
               <div className="lg:col-span-5 xl:col-span-4 bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden shadow-sm h-[600px] xl:h-full transition-all relative">
-                
-                {/* Module Header: Tabs & Actions */}
                 <div className="p-2.5 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center h-[60px] flex-none bg-white dark:bg-zinc-900">
                    <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-lg p-1 gap-1">
-                      <button 
-                        onClick={() => setAnalysisTab('calibration')}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${analysisTab === 'calibration' ? 'bg-white dark:bg-zinc-700 shadow-sm text-indigo-600 dark:text-indigo-300' : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200'}`}
-                      >
-                        <TrendingUp size={14} className={analysisTab === 'calibration' ? 'text-indigo-500' : 'opacity-50'}/>
-                        {t.calibration}
-                      </button>
-                      <button 
-                        onClick={() => setAnalysisTab('samples')}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${analysisTab === 'samples' ? 'bg-white dark:bg-zinc-700 shadow-sm text-emerald-600 dark:text-emerald-300' : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200'}`}
-                      >
-                        <TestTube2 size={14} className={analysisTab === 'samples' ? 'text-emerald-500' : 'opacity-50'}/>
-                        {t.samples}
-                      </button>
+                      <button onClick={() => setAnalysisTab('calibration')} className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${analysisTab === 'calibration' ? 'bg-white dark:bg-zinc-700 shadow-sm text-indigo-600 dark:text-indigo-300' : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200'}`}><TrendingUp size={14} className={analysisTab === 'calibration' ? 'text-indigo-500' : 'opacity-50'}/>{t.calibration}</button>
+                      <button onClick={() => setAnalysisTab('samples')} className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${analysisTab === 'samples' ? 'bg-white dark:bg-zinc-700 shadow-sm text-emerald-600 dark:text-emerald-300' : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200'}`}><TestTube2 size={14} className={analysisTab === 'samples' ? 'text-emerald-500' : 'opacity-50'}/>{t.samples}</button>
                    </div>
-
-                   {/* Context Actions */}
-                   {analysisTab === 'calibration' && (
-                     <button onClick={() => { setSelectionTarget('std'); setIsStdSelecting(!isStdSelecting); }} className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all border ${isStdSelecting ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:border-indigo-400'}`}>
-                       {isStdSelecting ? t.selecting : t.selectRange}
-                     </button>
-                   )}
-                   {analysisTab === 'samples' && (
-                     <button onClick={() => { setSelectionTarget('sample'); const nId = Date.now().toString(); setUnknownGroups(prev => [...prev, { id: nId, name: `${t.sampleName} ${prev.length+1}`, commonDilution: 1, color: GROUP_COLORS[prev.length % GROUP_COLORS.length].name, wells: [] }]); setEditingGroupId(nId); }} className="px-3 py-1.5 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-lg text-[10px] font-bold hover:scale-105 active:scale-95 transition-all flex items-center gap-1">
-                        <Plus size={12}/> {t.newGroup}
-                     </button>
-                   )}
+                   {analysisTab === 'calibration' && (<button onClick={() => { setSelectionTarget('std'); setIsStdSelecting(!isStdSelecting); }} className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all border ${isStdSelecting ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:border-indigo-400'}`}>{isStdSelecting ? t.selecting : t.selectRange}</button>)}
+                   {analysisTab === 'samples' && (<button onClick={() => { setSelectionTarget('sample'); const nId = Date.now().toString(); setUnknownGroups(prev => [...prev, { id: nId, name: `${t.sampleName} ${prev.length+1}`, commonDilution: 1, color: GROUP_COLORS[prev.length % GROUP_COLORS.length].name, wells: [] }]); setEditingGroupId(nId); }} className="px-3 py-1.5 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-lg text-[10px] font-bold hover:scale-105 active:scale-95 transition-all flex items-center gap-1"><Plus size={12}/> {t.newGroup}</button>)}
                 </div>
 
-                {/* Module Content */}
                 <div className="flex-1 overflow-hidden relative flex flex-col">
-                  
-                  {/* --- CALIBRATION VIEW --- */}
                   {analysisTab === 'calibration' && (
                     <div className="flex-1 flex flex-col min-h-0 animate-in fade-in slide-in-from-right-2 duration-300">
-                       
-                       {/* Chart Area - Now takes up remaining space above the controls */}
                        <div className="flex-1 p-2 relative bg-zinc-50/50 dark:bg-zinc-950/20 w-full min-h-0">
-                            {fitResult && (
-                              <div className="absolute top-4 right-4 z-10 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-md border border-zinc-200 dark:border-zinc-700 p-2.5 rounded-xl shadow-sm flex flex-col gap-1 pointer-events-none">
-                                 <div className="flex items-center justify-between gap-4">
-                                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">{t.summaryR2}</span>
-                                    <span className={`text-xs font-mono font-bold ${fitQuality === 'good' ? 'text-emerald-500' : fitQuality === 'warn' ? 'text-amber-500' : 'text-red-500'}`}>{fitResult.r2.toFixed(4)}</span>
-                                 </div>
-                                 <div className="text-[10px] font-medium text-zinc-500 font-mono">
-                                    y={fitResult.slope.toFixed(3)}x {fitResult.intercept >= 0 ? '+' : ''}{fitResult.intercept.toFixed(3)}
-                                 </div>
-                              </div>
-                            )}
-                            
+                            {fitResult && (<div className="absolute top-4 right-4 z-10 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-md border border-zinc-200 dark:border-zinc-700 p-2.5 rounded-xl shadow-sm flex flex-col gap-1 pointer-events-none"><div className="flex items-center justify-between gap-4"><span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">{t.summaryR2}</span><span className={`text-xs font-mono font-bold ${fitQuality === 'good' ? 'text-emerald-500' : fitQuality === 'warn' ? 'text-amber-500' : 'text-red-500'}`}>{fitResult.r2.toFixed(4)}</span></div><div className="text-[10px] font-medium text-zinc-500 font-mono">y={fitResult.slope.toFixed(3)}x {fitResult.intercept >= 0 ? '+' : ''}{fitResult.intercept.toFixed(3)}</div></div>)}
                             {stdCurvePoints.some(p => p.y) ? (<StandardCurveChart points={stdCurvePoints} slope={fitResult?.slope} intercept={fitResult?.intercept} t={t}/>) : (<div className="h-full flex flex-col items-center justify-center text-zinc-300 gap-2"><TrendingUp size={32} className="opacity-20"/><span className="text-xs italic">{t.noDataSelected}</span></div>)}
                        </div>
-
-                       {/* Controls Area - Horizontal at bottom */}
                        <div className="flex-none border-t border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 z-10 shadow-[0_-4px_15px_-3px_rgba(0,0,0,0.02)] flex flex-col">
-                          {/* Toolbar */}
                           <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-50 dark:border-zinc-800">
                              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">{t.stdCurve}</span> 
                              <div className="flex items-center gap-2">
                                 <span className="text-[10px] font-medium text-zinc-500">{t.presets}</span>
-                                <select 
-                                  className="text-[10px] bg-zinc-50 dark:bg-zinc-800 border-none rounded px-2 py-1 outline-none font-bold text-zinc-700 dark:text-zinc-300 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
-                                  onChange={(e) => {
-                                    const vals = PRESETS[e.target.value];
-                                    if(vals) setStdCurvePoints(vals.map((x, i) => ({ x, y: '', id: `pt-${Date.now()}-${i}` })));
-                                  }}
-                                  defaultValue=""
-                                >
-                                  <option value="" disabled>{t.selectPreset}</option>
-                                  <option value="BCA">BCA (0 - 0.5)</option>
-                                  <option value="Bradford">Bradford (0 - 1.5)</option>
-                                </select>
+                                <select className="text-[10px] bg-zinc-50 dark:bg-zinc-800 border-none rounded px-2 py-1 outline-none font-bold text-zinc-700 dark:text-zinc-300 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors" onChange={(e) => { const vals = PRESETS[e.target.value]; if(vals) setStdCurvePoints(vals.map((x, i) => ({ x, y: '', id: `pt-${Date.now()}-${i}` }))); }} defaultValue=""><option value="" disabled>{t.selectPreset}</option><option value="BCA">BCA (0 - 0.5)</option><option value="Bradford">Bradford (0 - 1.5)</option></select>
                              </div>
                           </div>
-                          
-                          {/* Horizontal Scroll List */}
                           <div className="overflow-x-auto p-3 flex items-start gap-3">
                              {stdCurvePoints.map((pt, i) => (
                                <div key={pt.id} className="flex-none w-14 flex flex-col gap-1 group">
-                                  <div className="flex justify-between items-center px-0.5">
-                                     <span className="text-[9px] font-mono text-zinc-400">#{i+1}</span>
-                                     <button onClick={() => setStdCurvePoints(prev => prev.filter(p => p.id !== pt.id))} className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><X size={10}/></button>
-                                  </div>
-                                  <div className={`relative rounded-md border transition-all ${pt.sourceWellId ? 'border-indigo-500 bg-indigo-50/20' : 'border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 focus-within:border-zinc-400'}`}>
-                                     <input 
-                                        value={pt.x} 
-                                        onChange={e => setStdCurvePoints(prev => prev.map(p => p.id === pt.id ? {...p, x: e.target.value} : p))} 
-                                        className="w-full text-center text-[10px] font-mono font-bold bg-transparent outline-none py-1.5 text-zinc-700 dark:text-zinc-200 placeholder-zinc-300" 
-                                        placeholder="0"
-                                     />
-                                     {pt.sourceWellId && <div className="absolute top-0 right-0 w-1.5 h-1.5 bg-indigo-500 rounded-full translate-x-1/3 -translate-y-1/3 shadow-sm ring-1 ring-white dark:ring-zinc-900"></div>}
-                                  </div>
-                                  <div className="h-3 text-center">
-                                     {pt.y && <span className="text-[9px] font-mono text-zinc-400">{pt.y}</span>}
-                                  </div>
+                                  <div className="flex justify-between items-center px-0.5"><span className="text-[9px] font-mono text-zinc-400">#{i+1}</span><button onClick={() => setStdCurvePoints(prev => prev.filter(p => p.id !== pt.id))} className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><X size={10}/></button></div>
+                                  <div className={`relative rounded-md border transition-all ${pt.sourceWellId ? 'border-indigo-500 bg-indigo-50/20' : 'border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 focus-within:border-zinc-400'}`}><input value={pt.x} onChange={e => setStdCurvePoints(prev => prev.map(p => p.id === pt.id ? {...p, x: e.target.value} : p))} className="w-full text-center text-[10px] font-mono font-bold bg-transparent outline-none py-1.5 text-zinc-700 dark:text-zinc-200 placeholder-zinc-300" placeholder="0"/>{pt.sourceWellId && <div className="absolute top-0 right-0 w-1.5 h-1.5 bg-indigo-500 rounded-full translate-x-1/3 -translate-y-1/3 shadow-sm ring-1 ring-white dark:ring-zinc-900"></div>}</div>
+                                  <div className="h-3 text-center">{pt.y && <span className="text-[9px] font-mono text-zinc-400">{pt.y}</span>}</div>
                                </div>
                              ))}
-                             <button onClick={() => setStdCurvePoints(prev => [...prev, { x: '', y: '', id: Date.now().toString() }])} className="flex-none w-8 h-[50px] mt-[17px] rounded-lg border border-dashed border-zinc-200 dark:border-zinc-700 flex items-center justify-center text-zinc-400 hover:border-indigo-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/10 transition-all">
-                                <Plus size={14}/>
-                             </button>
+                             <button onClick={() => setStdCurvePoints(prev => [...prev, { x: '', y: '', id: Date.now().toString() }])} className="flex-none w-8 h-[50px] mt-[17px] rounded-lg border border-dashed border-zinc-200 dark:border-zinc-700 flex items-center justify-center text-zinc-400 hover:border-indigo-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/10 transition-all"><Plus size={14}/></button>
                           </div>
                        </div>
                     </div>
                   )}
-
-                  {/* --- SAMPLES VIEW --- */}
                   {analysisTab === 'samples' && (
                     <div className="flex-1 overflow-y-auto p-4 animate-in fade-in slide-in-from-right-2 duration-300 bg-zinc-50/50 dark:bg-zinc-950/20">
-                       {unknownGroups.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center text-zinc-400 py-10"><TestTube2 size={48} className="mb-3 opacity-20"/><p className="text-xs font-medium">{t.noGroups}</p></div>
-                      ) : (
+                       {unknownGroups.length === 0 ? (<div className="h-full flex flex-col items-center justify-center text-zinc-400 py-10"><TestTube2 size={48} className="mb-3 opacity-20"/><p className="text-xs font-medium">{t.noGroups}</p></div>) : (
                         <div className="space-y-3">
                           {unknownGroups.map(group => {
                             const color = GROUP_COLORS.find(c => c.name === group.color)!;
@@ -854,60 +685,20 @@ function App() {
                             const isEditing = editingGroupId === group.id;
                             return (
                               <div key={group.id} onClick={() => { setEditingGroupId(group.id); setSelectionTarget('sample'); }} className={`bg-white dark:bg-zinc-900 rounded-xl border transition-all cursor-pointer shadow-sm overflow-hidden ${isEditing ? 'border-indigo-500 ring-1 ring-indigo-500 shadow-md shadow-indigo-500/10' : 'border-zinc-200 dark:border-zinc-800 hover:border-zinc-300'}`}>
-                                {/* Header */}
                                 <div className={`px-3 py-2.5 flex items-center gap-3 ${isEditing ? 'bg-zinc-50 dark:bg-zinc-800/50' : ''}`}>
                                   <div className={`w-2.5 h-2.5 rounded-full ${color.bg}`}/>
                                   <input value={group.name} onChange={e => setUnknownGroups(prev => prev.map(g => g.id === group.id ? {...g, name: e.target.value} : g))} onClick={(e) => e.stopPropagation()} className="font-bold text-xs sm:text-sm bg-transparent outline-none flex-1 text-zinc-700 dark:text-zinc-200"/>
-                                  
-                                  {/* Compact Stats in Header */}
-                                  {!isEditing && (
-                                    <div className="flex items-center gap-2 text-[10px] text-zinc-400 font-mono">
-                                      <span className="font-bold text-zinc-600 dark:text-zinc-300">{stats.mean.toFixed(2)}</span>
-                                      <span className="text-zinc-300">|</span>
-                                      <span>CV {stats.cv.toFixed(0)}%</span>
-                                    </div>
-                                  )}
-                                  
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[9px] bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-500 font-mono font-bold">n={group.wells.length}</span>
-                                    {isEditing && <button onClick={(e) => { e.stopPropagation(); setUnknownGroups(prev => prev.filter(g => g.id !== group.id)); }} className="text-zinc-300 hover:text-red-500 p-0.5"><X size={14}/></button>}
-                                  </div>
+                                  {!isEditing && (<div className="flex items-center gap-2 text-[10px] text-zinc-400 font-mono"><span className="font-bold text-zinc-600 dark:text-zinc-300">{stats.mean.toFixed(2)}</span><span className="text-zinc-300">|</span><span>CV {stats.cv.toFixed(0)}%</span></div>)}
+                                  <div className="flex items-center gap-2"><span className="text-[9px] bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-500 font-mono font-bold">n={group.wells.length}</span>{isEditing && <button onClick={(e) => { e.stopPropagation(); setUnknownGroups(prev => prev.filter(g => g.id !== group.id)); }} className="text-zinc-300 hover:text-red-500 p-0.5"><X size={14}/></button>}</div>
                                 </div>
-                                
-                                {/* Expanded Content */}
                                 {isEditing && (
                                   <div className="p-3 border-t border-zinc-100 dark:border-zinc-800 animate-in slide-in-from-top-1 duration-200">
-                                    
-                                    {/* Stats Row */}
                                     <div className="flex gap-2 mb-3">
-                                       {[{ l: t.mean, v: stats.mean.toFixed(2) }, { l: t.sd, v: stats.sd.toFixed(2) }, { l: t.cv, v: stats.cv.toFixed(1) + '%' }].map((s, i) => (
-                                         <div key={i} className="flex-1 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-1.5 text-center border border-zinc-100 dark:border-zinc-800">
-                                            <div className="text-[8px] text-zinc-400 font-bold uppercase tracking-tight">{s.l}</div>
-                                            <div className="text-xs font-mono font-bold text-zinc-600 dark:text-zinc-300">{s.v}</div>
-                                         </div>
-                                       ))}
+                                       {[{ l: t.mean, v: stats.mean.toFixed(2) }, { l: t.sd, v: stats.sd.toFixed(2) }, { l: t.cv, v: stats.cv.toFixed(1) + '%' }].map((s, i) => (<div key={i} className="flex-1 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-1.5 text-center border border-zinc-100 dark:border-zinc-800"><div className="text-[8px] text-zinc-400 font-bold uppercase tracking-tight">{s.l}</div><div className="text-xs font-mono font-bold text-zinc-600 dark:text-zinc-300">{s.v}</div></div>))}
                                     </div>
-
-                                    {/* Controls */}
-                                    <div className="flex items-center justify-between mb-3 px-1">
-                                       <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide flex items-center gap-1"><Beaker size={10}/> {t.setAllDil}</label>
-                                       <input type="number" value={group.commonDilution} onClick={(e)=>e.stopPropagation()} onChange={e => { const val = parseFloat(e.target.value)||1; setUnknownGroups(prev => prev.map(g => g.id === group.id ? {...g, commonDilution: val, wells: g.wells.map(w => ({...w, dilution: val}))} : g)); }} className="w-16 text-right text-xs bg-zinc-100 dark:bg-zinc-800 px-2 py-1 rounded border-none outline-none focus:ring-1 focus:ring-indigo-500 font-mono font-bold"/>
-                                    </div>
-
-                                    {/* Wells Grid - Compact */}
+                                    <div className="flex items-center justify-between mb-3 px-1"><label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide flex items-center gap-1"><Beaker size={10}/> {t.setAllDil}</label><input type="number" value={group.commonDilution} onClick={(e)=>e.stopPropagation()} onChange={e => { const val = parseFloat(e.target.value)||1; setUnknownGroups(prev => prev.map(g => g.id === group.id ? {...g, commonDilution: val, wells: g.wells.map(w => ({...w, dilution: val}))} : g)); }} className="w-16 text-right text-xs bg-zinc-100 dark:bg-zinc-800 px-2 py-1 rounded border-none outline-none focus:ring-1 focus:ring-indigo-500 font-mono font-bold"/></div>
                                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-1">
-                                      {group.wells.map((w, i) => (
-                                        <div key={i} className="flex flex-col bg-zinc-50 dark:bg-zinc-800/30 border border-zinc-100 dark:border-zinc-800 rounded-md p-1.5 group/row relative overflow-hidden">
-                                           <div className="flex justify-between items-start">
-                                              <span className="font-mono font-bold text-[10px] text-zinc-400">{w.row}{w.col}</span>
-                                              <button onClick={(e) => { e.stopPropagation(); setUnknownGroups(prev => prev.map(g => g.id === group.id ? {...g, wells: g.wells.filter((_, idx) => idx !== i)} : g)); }} className="text-zinc-300 hover:text-red-500 opacity-0 group-hover/row:opacity-100 absolute top-1 right-1"><X size={10}/></button>
-                                           </div>
-                                           <div className="flex justify-between items-end mt-1">
-                                              <span className="text-[9px] text-zinc-400">x{w.dilution}</span>
-                                              <span className="font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400">{calculateConc(w.od, fitResult, w.dilution).toFixed(2)}</span>
-                                           </div>
-                                        </div>
-                                      ))}
+                                      {group.wells.map((w, i) => (<div key={i} className="flex flex-col bg-zinc-50 dark:bg-zinc-800/30 border border-zinc-100 dark:border-zinc-800 rounded-md p-1.5 group/row relative overflow-hidden"><div className="flex justify-between items-start"><span className="font-mono font-bold text-[10px] text-zinc-400">{w.row}{w.col}</span><button onClick={(e) => { e.stopPropagation(); setUnknownGroups(prev => prev.map(g => g.id === group.id ? {...g, wells: g.wells.filter((_, idx) => idx !== i)} : g)); }} className="text-zinc-300 hover:text-red-500 opacity-0 group-hover/row:opacity-100 absolute top-1 right-1"><X size={10}/></button></div><div className="flex justify-between items-end mt-1"><span className="text-[9px] text-zinc-400">x{w.dilution}</span><span className="font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400">{calculateConc(w.od, fitResult, w.dilution).toFixed(2)}</span></div></div>))}
                                     </div>
                                   </div>
                                 )}
@@ -918,10 +709,8 @@ function App() {
                       )}
                     </div>
                   )}
-
                 </div>
               </div>
-
             </div>
           </div>
         )}
