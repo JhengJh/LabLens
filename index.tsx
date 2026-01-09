@@ -9,7 +9,8 @@ import {
   ChevronRight, Download, FileSpreadsheet, Sun, Moon,
   LayoutGrid, Settings2, Grip, Keyboard, Eraser, Languages,
   AlertTriangle, CheckCircle, XCircle,
-  Key, Save, Eye, EyeOff, Lock, Settings, BarChart3, Activity, Beaker
+  Key, Save, Eye, EyeOff, Lock, Settings, BarChart3, Activity, Beaker,
+  Sparkles, Zap
 } from 'lucide-react';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
@@ -71,7 +72,14 @@ const TRANSLATIONS = {
     activeGroup: "Active Group",
     well: "Well",
     presets: "Presets",
-    selectPreset: "Select..."
+    selectPreset: "Select...",
+    modelFlash: "Gemini Flash (Fast)",
+    modelPro: "Gemini 3 Pro (Smart)",
+    apiKeyLabel: "API Key",
+    apiKeyPlaceholder: "Enter your Gemini API Key",
+    save: "Save",
+    saved: "Saved",
+    missingKey: "API Key is missing. Please add it in Settings."
   },
   zh: {
     appTitle: "LabLens",
@@ -128,7 +136,14 @@ const TRANSLATIONS = {
     activeGroup: "当前组",
     well: "孔号",
     presets: "预设方案",
-    selectPreset: "选择..."
+    selectPreset: "选择...",
+    modelFlash: "Gemini Flash (快速)",
+    modelPro: "Gemini 3 Pro (智能)",
+    apiKeyLabel: "API Key",
+    apiKeyPlaceholder: "输入您的 Gemini API Key",
+    save: "保存",
+    saved: "已保存",
+    missingKey: "缺少 API Key，请在设置中填写。"
   }
 };
 
@@ -347,6 +362,52 @@ function StandardCurveChart({ points, slope, intercept, t }: { points: StdCurveP
   );
 }
 
+function SettingsModal({ isOpen, onClose, t, apiKey, setApiKey }: { isOpen: boolean, onClose: () => void, t: any, apiKey: string, setApiKey: (k: string) => void }) {
+  const [showKey, setShowKey] = useState(false);
+  const [localKey, setLocalKey] = useState(apiKey);
+
+  useEffect(() => { setLocalKey(apiKey); }, [apiKey]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-2xl shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="p-4 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center bg-zinc-50/50 dark:bg-zinc-900">
+          <h3 className="font-bold flex items-center gap-2 text-zinc-800 dark:text-zinc-100"><Settings size={18}/> {t.settings}</h3>
+          <button onClick={onClose} className="p-1 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"><X size={18} className="text-zinc-500"/></button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">{t.apiKeyLabel}</label>
+            <div className="relative">
+              <Key size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"/>
+              <input 
+                type={showKey ? "text" : "password"}
+                value={localKey}
+                onChange={(e) => setLocalKey(e.target.value)}
+                placeholder={t.apiKeyPlaceholder}
+                className="w-full pl-10 pr-10 py-2.5 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-sm font-mono outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-zinc-800 dark:text-zinc-200"
+              />
+              <button onClick={() => setShowKey(!showKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200">
+                {showKey ? <EyeOff size={16}/> : <Eye size={16}/>}
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="p-4 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900 flex justify-end">
+          <button 
+            onClick={() => { setApiKey(localKey); onClose(); }}
+            className="flex items-center gap-2 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-500/20 active:scale-95 transition-all"
+          >
+            <Save size={16}/> {t.save}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // --- Main App ---
 
 function App() {
@@ -364,21 +425,42 @@ function App() {
   const [selectionTarget, setSelectionTarget] = useState<'std' | 'sample'>('std');
   const [isStdSelecting, setIsStdSelecting] = useState(false);
   const [analysisTab, setAnalysisTab] = useState<'calibration' | 'samples'>('calibration');
-  const isDesktop = useMediaQuery('(min-width: 1024px)');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-flash-latest');
+  const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem('lablens_api_key') || '');
+  const [showSettings, setShowSettings] = useState(false);
+  
+  const isDesktop = useMediaQuery('(min-width: 768px)');
+  const isLandscape = useMediaQuery('(orientation: landscape)');
+  const showStandardGrid = isDesktop || isLandscape;
   const t = TRANSLATIONS[lang];
 
   useEffect(() => { theme === 'dark' ? document.documentElement.classList.add('dark') : document.documentElement.classList.remove('dark'); }, [theme]);
 
+  const handleSetApiKey = (key: string) => {
+    setCustomApiKey(key);
+    localStorage.setItem('lablens_api_key', key);
+  };
+
   const processImage = async () => {
     if (!image) return;
+    
+    // API KEY LOGIC: Use custom key if available, otherwise env var
+    const apiKeyToUse = customApiKey || process.env.API_KEY;
+    
+    if (!apiKeyToUse) {
+      setError(t.missingKey);
+      setShowSettings(true);
+      return;
+    }
+
     setLoading(true); setError(null);
     try {
       const compressedImage = await compressImage(image);
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: apiKeyToUse });
       const match = compressedImage.match(/^data:(.+);base64,(.+)$/);
       const mimeType = match ? match[1] : 'image/jpeg', base64Data = match ? match[2] : compressedImage.split(',')[1];
       const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: selectedModel,
         contents: { parts: [{ inlineData: { mimeType, data: base64Data } }, { text: "Extract measurement values from 96-well microplate. Map to A-H, 1-12. Output JSON [{value, row, col}]." }] },
         config: { temperature: 0, responseMimeType: "application/json", responseSchema: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { value: { type: Type.STRING }, row: { type: Type.STRING }, col: { type: Type.INTEGER } }, required: ["value", "row", "col"] } } }
       });
@@ -519,6 +601,14 @@ function App() {
 
   return (
     <div className="h-screen w-full flex flex-col bg-[#f8fafc] dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 transition-colors overflow-hidden">
+      <SettingsModal 
+        isOpen={showSettings} 
+        onClose={() => setShowSettings(false)} 
+        t={t} 
+        apiKey={customApiKey} 
+        setApiKey={handleSetApiKey} 
+      />
+      
       {/* --- DASHBOARD HEADER --- */}
       <header className="flex-none h-16 px-6 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between shadow-sm z-50">
         <div className="flex items-center gap-4">
@@ -532,6 +622,20 @@ function App() {
               {t.export}
             </button>
           )}
+
+          {/* Model Selector - Visible on all views */}
+          <div className="hidden sm:flex items-center mr-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg p-0.5">
+            <select 
+               value={selectedModel}
+               onChange={(e) => setSelectedModel(e.target.value)}
+               className="bg-transparent text-[10px] font-bold text-zinc-600 dark:text-zinc-300 rounded-md px-2 py-1.5 outline-none border-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+            >
+               <option value="gemini-flash-latest">{t.modelFlash}</option>
+               <option value="gemini-3-pro-preview">{t.modelPro}</option>
+            </select>
+          </div>
+
+          <button onClick={() => setShowSettings(true)} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg text-zinc-500 transition-colors"><Settings size={20}/></button>
           <button onClick={() => setLang(l => l === 'en' ? 'zh' : 'en')} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg text-zinc-500 transition-colors"><Languages size={20}/></button>
           <button onClick={() => setTheme(th => th === 'dark' ? 'light' : 'dark')} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg text-zinc-500 transition-colors">{theme === 'dark' ? <Sun size={20}/> : <Moon size={20}/>}</button>
           {view === 'results' && (<button onClick={reset} className="ml-2 p-2 text-zinc-400 hover:text-red-500 transition-colors"><RefreshCw size={20}/></button>)}
@@ -580,32 +684,62 @@ function App() {
             <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
               
               {/* PANEL 1: PLATE EXPLORER - ENLARGED (Left Side) */}
-              <div className="lg:col-span-7 xl:col-span-8 bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden shadow-sm h-full min-h-[500px] md:min-h-[750px] lg:h-full transition-all relative">
+              <div className="lg:col-span-7 xl:col-span-8 bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 flex flex-col shadow-sm transition-all relative lg:h-full lg:overflow-hidden h-auto min-h-[500px]">
                 <div className="p-4 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center h-[60px] flex-none bg-white dark:bg-zinc-900 z-10 relative">
                   <h3 className="font-bold flex items-center gap-2 text-zinc-700 dark:text-zinc-200 text-sm">
                     <LayoutGrid size={18} className="text-zinc-400"/> {t.plateMap}
                   </h3>
                 </div>
                 {/* Scrollable Container for Mobile/Tablet */}
-                <div className="flex-1 p-1 sm:p-6 flex flex-col overflow-auto bg-zinc-50/50 dark:bg-zinc-950/20">
+                <div className="flex-1 p-1 sm:p-6 flex flex-col bg-zinc-50/50 dark:bg-zinc-950/20 lg:overflow-auto overflow-visible">
                    {/* Grid Wrapper */}
-                   <div className="min-w-fit w-full h-full flex flex-col justify-start max-w-4xl mx-auto">
-                    {/* Header Row 1-12 */}
-                    <div className="grid grid-cols-[auto_repeat(12,1fr)] gap-px sm:gap-1 mb-1">
-                       <div className="w-6 sm:w-8"></div>
-                       {Array.from({length: 12}).map((_, i) => (
-                         <div key={i} className="text-center text-[10px] sm:text-xs font-bold text-zinc-400 select-none">{i+1}</div>
-                       ))}
-                    </div>
-                    {/* Rows A-H */}
-                    <div className="flex-1 flex flex-col justify-start gap-px sm:gap-1">
-                      {ROW_HEADERS.map((rowChar, rIdx) => (
-                        <div key={rowChar} className="grid grid-cols-[auto_repeat(12,1fr)] gap-px sm:gap-1 items-center flex-1">
-                          <div className="w-6 sm:w-8 flex items-center justify-center text-[10px] sm:text-xs font-bold text-zinc-400 select-none">{rowChar}</div>
-                          {Array.from({ length: 12 }).map((_, cIdx) => renderPlateCell(rowChar, cIdx + 1))}
+                   <div className={`min-w-fit w-full flex flex-col justify-start max-w-4xl mx-auto transition-all duration-300 ${showStandardGrid ? 'max-w-[130vh]' : ''}`}>
+                    {!showStandardGrid ? (
+                      // --- MOBILE/PHONE PORTRAIT TRANSPOSED VIEW (8 cols x 12 rows) ---
+                      <>
+                        {/* Header Row: H-A (Horizontal Reversed) + Row Label Spacer */}
+                        <div className="grid grid-cols-[repeat(8,1fr)_auto] gap-px sm:gap-1 mb-1">
+                          {[...ROW_HEADERS].reverse().map((char, i) => (
+                            <div key={i} className="text-center text-[10px] sm:text-xs font-bold text-zinc-400 select-none">{char}</div>
+                          ))}
+                          <div className="w-6 sm:w-8"></div> {/* Spacer for Right Aligned Labels */}
                         </div>
-                      ))}
-                    </div>
+                        {/* Rows: 1-12 (Vertical) */}
+                        <div className="flex flex-col justify-start gap-px sm:gap-1">
+                          {Array.from({length: 12}).map((_, rIdx) => {
+                            const rowNum = rIdx + 1;
+                            return (
+                              <div key={rowNum} className="grid grid-cols-[repeat(8,1fr)_auto] gap-px sm:gap-1 items-center">
+                                {/* Cells: H-A (Reversed) */}
+                                {[...ROW_HEADERS].reverse().map((rowChar) => renderPlateCell(rowChar, rowNum))}
+                                {/* Row Number: Right Aligned */}
+                                <div className="w-6 sm:w-8 flex items-center justify-center text-[10px] sm:text-xs font-bold text-zinc-400 select-none">{rowNum}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    ) : (
+                      // --- DESKTOP/TABLET/LANDSCAPE STANDARD VIEW (12 cols x 8 rows) ---
+                      <>
+                        {/* Header Row: 1-12 */}
+                        <div className="grid grid-cols-[auto_repeat(12,1fr)] gap-px sm:gap-1 mb-1 lg:h-full">
+                           <div className="w-6 sm:w-8"></div>
+                           {Array.from({length: 12}).map((_, i) => (
+                             <div key={i} className="text-center text-[10px] sm:text-xs font-bold text-zinc-400 select-none">{i+1}</div>
+                           ))}
+                        </div>
+                        {/* Rows: A-H */}
+                        <div className="flex flex-col justify-start gap-px sm:gap-1 lg:flex-1">
+                          {ROW_HEADERS.map((rowChar, rIdx) => (
+                            <div key={rowChar} className="grid grid-cols-[auto_repeat(12,1fr)] gap-px sm:gap-1 items-center lg:flex-1">
+                              <div className="w-6 sm:w-8 flex items-center justify-center text-[10px] sm:text-xs font-bold text-zinc-400 select-none">{rowChar}</div>
+                              {Array.from({ length: 12 }).map((_, cIdx) => renderPlateCell(rowChar, cIdx + 1))}
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
