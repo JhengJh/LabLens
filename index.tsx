@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -600,7 +599,7 @@ function App() {
   };
 
   return (
-    <div className="h-screen w-full flex flex-col bg-[#f8fafc] dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 transition-colors overflow-hidden">
+    <div className="h-screen h-[100dvh] w-full flex flex-col bg-[#f8fafc] dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 transition-colors overflow-hidden">
       <SettingsModal 
         isOpen={showSettings} 
         onClose={() => setShowSettings(false)} 
@@ -664,36 +663,23 @@ function App() {
 
         {view === 'camera' && <CameraView onCapture={(img) => { setImage(img); setView('preview'); }} onBack={() => setView('home')} t={t}/>}
 
-        {view === 'preview' && (
-          <div className="h-full flex flex-col bg-zinc-50 dark:bg-zinc-950 p-6">
-            <div className="flex-1 bg-white dark:bg-zinc-900 rounded-3xl shadow-inner border border-zinc-200 dark:border-zinc-800 flex items-center justify-center p-4 relative overflow-hidden">
-              <img src={image!} className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"/>
-              {loading && (<div className="absolute inset-0 bg-black/50 backdrop-blur-md flex flex-col items-center justify-center text-white z-50"><Loader2 size={48} className="animate-spin text-indigo-400 mb-4"/><p className="font-mono text-sm tracking-widest">{t.analyzing}</p></div>)}
-            </div>
-            <div className="flex-none mt-6 flex justify-center gap-4">
-              <button onClick={() => setView('home')} className="px-8 py-3 rounded-2xl font-bold text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors">{t.discard}</button>
-              <button onClick={processImage} className="px-10 py-3 rounded-2xl font-bold bg-indigo-600 text-white shadow-xl shadow-indigo-500/30 hover:bg-indigo-700 transition-all">{t.analyze}</button>
-            </div>
-          </div>
-        )}
-
         {view === 'results' && (
-          <div className="h-full flex flex-col p-4 lg:p-6 gap-6 overflow-y-auto">
+          <div className="h-full flex flex-col p-4 lg:p-6 gap-6 overflow-y-auto pb-24">
             
             {/* --- DASHBOARD GRID --- */}
             <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
               
               {/* PANEL 1: PLATE EXPLORER - ENLARGED (Left Side) */}
-              <div className="lg:col-span-7 xl:col-span-8 bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 flex flex-col shadow-sm transition-all relative lg:h-full lg:overflow-hidden h-auto min-h-[500px]">
+              <div className="lg:col-span-7 xl:col-span-8 bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 flex flex-col shadow-sm transition-all relative xl:h-full xl:overflow-hidden h-auto min-h-[500px]">
                 <div className="p-4 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center h-[60px] flex-none bg-white dark:bg-zinc-900 z-10 relative">
                   <h3 className="font-bold flex items-center gap-2 text-zinc-700 dark:text-zinc-200 text-sm">
                     <LayoutGrid size={18} className="text-zinc-400"/> {t.plateMap}
                   </h3>
                 </div>
-                {/* Scrollable Container for Mobile/Tablet */}
-                <div className="flex-1 p-1 sm:p-6 flex flex-col bg-zinc-50/50 dark:bg-zinc-950/20 lg:overflow-auto overflow-visible">
+                {/* Scrollable Container for Mobile/Tablet - Hidden overflow on XL to force fit */}
+                <div className="flex-1 p-1 sm:p-6 flex flex-col bg-zinc-50/50 dark:bg-zinc-950/20 xl:overflow-auto overflow-visible">
                    {/* Grid Wrapper */}
-                   <div className={`min-w-fit w-full flex flex-col justify-start max-w-4xl mx-auto transition-all duration-300 ${showStandardGrid ? 'max-w-[130vh]' : ''}`}>
+                   <div className={`min-w-fit w-full flex flex-col justify-center max-w-4xl mx-auto transition-all duration-300 ${showStandardGrid ? 'max-w-[95vh]' : ''}`}>
                     {!showStandardGrid ? (
                       // --- MOBILE/PHONE PORTRAIT TRANSPOSED VIEW (8 cols x 12 rows) ---
                       <>
@@ -723,7 +709,7 @@ function App() {
                       // --- DESKTOP/TABLET/LANDSCAPE STANDARD VIEW (12 cols x 8 rows) ---
                       <>
                         {/* Header Row: 1-12 */}
-                        <div className="grid grid-cols-[auto_repeat(12,1fr)] gap-px sm:gap-1 mb-1 lg:h-full">
+                        <div className="grid grid-cols-[auto_repeat(12,1fr)] gap-px sm:gap-1 mb-1">
                            <div className="w-6 sm:w-8"></div>
                            {Array.from({length: 12}).map((_, i) => (
                              <div key={i} className="text-center text-[10px] sm:text-xs font-bold text-zinc-400 select-none">{i+1}</div>
@@ -745,7 +731,7 @@ function App() {
               </div>
 
               {/* PANEL 2: ANALYSIS & SAMPLES - MERGED TABBED MODULE (Right Side) */}
-              <div className="lg:col-span-5 xl:col-span-4 bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden shadow-sm h-[600px] lg:h-full transition-all relative">
+              <div className="lg:col-span-5 xl:col-span-4 bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden shadow-sm h-[600px] xl:h-full transition-all relative">
                 
                 {/* Module Header: Tabs & Actions */}
                 <div className="p-2.5 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center h-[60px] flex-none bg-white dark:bg-zinc-900">
