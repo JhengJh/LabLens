@@ -72,13 +72,15 @@ const TRANSLATIONS = {
     well: "Well",
     presets: "Presets",
     selectPreset: "Select...",
+    custom: "Custom",
     modelFlash: "Gemini Flash (Fast)",
     modelPro: "Gemini 3 Pro (Smart)",
     apiKeyLabel: "API Key",
     apiKeyPlaceholder: "Enter your Gemini API Key",
     save: "Save",
     saved: "Saved",
-    missingKey: "API Key is missing. Please add it in Settings."
+    missingKey: "API Key is missing. Please add it in Settings.",
+    toggleView: "Toggle View"
   },
   zh: {
     appTitle: "LabLens",
@@ -136,13 +138,15 @@ const TRANSLATIONS = {
     well: "孔号",
     presets: "预设方案",
     selectPreset: "选择...",
+    custom: "自定义",
     modelFlash: "Gemini Flash (快速)",
     modelPro: "Gemini 3 Pro (智能)",
     apiKeyLabel: "API Key",
     apiKeyPlaceholder: "输入您的 Gemini API Key",
     save: "保存",
     saved: "已保存",
-    missingKey: "缺少 API Key，请在设置中填写。"
+    missingKey: "缺少 API Key，请在设置中填写。",
+    toggleView: "切换视图"
   }
 };
 
@@ -193,7 +197,8 @@ const PRESETS: Record<string, string[]> = {
   'Bradford': ['0', '0.0625', '0.125', '0.25', '0.5', '0.75', '1', '1.5']
 };
 
-const DEFAULT_CONCS = PRESETS['BCA']; // Default to BCA
+// Modified: Default standard curve points now fixed to 10 entries
+const DEFAULT_CONCS = [...PRESETS['BCA'], '', '']; 
 
 const GROUP_COLORS = [
   { name: 'emerald', bg: 'bg-emerald-500', border: 'border-emerald-500', text: 'text-emerald-700 dark:text-emerald-400', ring: 'ring-emerald-500', softBg: 'bg-emerald-50 dark:bg-emerald-900/20' },
@@ -364,11 +369,8 @@ function StandardCurveChart({ points, slope, intercept, t }: { points: StdCurveP
 function SettingsModal({ isOpen, onClose, t, apiKey, setApiKey }: { isOpen: boolean, onClose: () => void, t: any, apiKey: string, setApiKey: (k: string) => void }) {
   const [showKey, setShowKey] = useState(false);
   const [localKey, setLocalKey] = useState(apiKey);
-
   useEffect(() => { setLocalKey(apiKey); }, [apiKey]);
-
   if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-2xl shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
@@ -381,26 +383,13 @@ function SettingsModal({ isOpen, onClose, t, apiKey, setApiKey }: { isOpen: bool
             <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">{t.apiKeyLabel}</label>
             <div className="relative">
               <Key size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"/>
-              <input 
-                type={showKey ? "text" : "password"}
-                value={localKey}
-                onChange={(e) => setLocalKey(e.target.value)}
-                placeholder={t.apiKeyPlaceholder}
-                className="w-full pl-10 pr-10 py-2.5 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-sm font-mono outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-zinc-800 dark:text-zinc-200"
-              />
-              <button onClick={() => setShowKey(!showKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200">
-                {showKey ? <EyeOff size={16}/> : <Eye size={16}/>}
-              </button>
+              <input type={showKey ? "text" : "password"} value={localKey} onChange={(e) => setLocalKey(e.target.value)} placeholder={t.apiKeyPlaceholder} className="w-full pl-10 pr-10 py-2.5 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-sm font-mono outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-zinc-800 dark:text-zinc-200"/>
+              <button onClick={() => setShowKey(!showKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200">{showKey ? <EyeOff size={16}/> : <Eye size={16}/>}</button>
             </div>
           </div>
         </div>
         <div className="p-4 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900 flex justify-end">
-          <button 
-            onClick={() => { setApiKey(localKey); onClose(); }}
-            className="flex items-center gap-2 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-500/20 active:scale-95 transition-all"
-          >
-            <Save size={16}/> {t.save}
-          </button>
+          <button onClick={() => { setApiKey(localKey); onClose(); }} className="flex items-center gap-2 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-500/20 active:scale-95 transition-all"><Save size={16}/> {t.save}</button>
         </div>
       </div>
     </div>
@@ -429,22 +418,19 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   
   const isDesktop = useMediaQuery('(min-width: 768px)');
-  const isLandscape = useMediaQuery('(orientation: landscape)');
-  const showStandardGrid = isDesktop || isLandscape;
+  const isMobilePortrait = useMediaQuery('(max-width: 767px) and (orientation: portrait)');
+  const useStandardLayout = !isMobilePortrait;
+
   const t = TRANSLATIONS[lang];
 
   useEffect(() => { theme === 'dark' ? document.documentElement.classList.add('dark') : document.documentElement.classList.remove('dark'); }, [theme]);
 
-  const handleSetApiKey = (key: string) => {
-    setCustomApiKey(key);
-    localStorage.setItem('lablens_api_key', key);
-  };
+  const handleSetApiKey = (key: string) => { setCustomApiKey(key); localStorage.setItem('lablens_api_key', key); };
 
   const processImage = async () => {
     if (!image) return;
     const apiKeyToUse = customApiKey || process.env.API_KEY;
     if (!apiKeyToUse) { setError(t.missingKey); setShowSettings(true); return; }
-
     setLoading(true); setError(null);
     try {
       const compressedImage = await compressImage(image);
@@ -512,20 +498,33 @@ function App() {
     const group = unknownGroups.find(g => g.wells.some(w => w.row === row && w.col === col));
     const gColor = group ? GROUP_COLORS.find(c => c.name === group.color) : null;
     const isSelecting = (selectionTarget === 'std' && isStdSelecting) || (selectionTarget === 'sample' && editingGroupId !== null);
-
     let bgClass = 'bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-sm';
     let textClass = 'text-zinc-600 dark:text-zinc-300 placeholder-zinc-300';
-    
     if (stdIdx !== -1) { bgClass = 'bg-indigo-600 border-indigo-600 shadow-md shadow-indigo-500/30'; textClass = 'text-white placeholder-white/50 font-bold'; }
     else if (gColor) { bgClass = `${gColor.bg} ${gColor.border} shadow-md shadow-${gColor.name}-500/30`; textClass = 'text-white placeholder-white/50 font-bold'; }
     else if (!item) { bgClass = 'bg-zinc-50 dark:bg-zinc-800/40 border-zinc-100 dark:border-zinc-800'; }
-
     return (
       <div key={cellId} onClick={() => handleCellClick(row, col)} className={`relative w-[95%] aspect-square rounded-full flex items-center justify-center transition-all cursor-pointer hover:scale-[1.05] active:scale-95 z-0 hover:z-10 mx-auto ${bgClass}`}> 
-        <input type="text" className={`w-full h-full bg-transparent text-center text-[10px] lg:text-[11px] font-mono outline-none p-0 transform origin-center rounded-full ${textClass} ${isSelecting ? 'cursor-pointer' : ''}`} value={item?.value || ''} placeholder="-" onChange={(e) => updateWellValue(row, col, e.target.value)}/>
+        <input type="text" className={`w-full h-full bg-transparent text-center text-[12px] lg:text-[12px] font-mono outline-none p-0 transform origin-center rounded-full ${textClass} ${isSelecting ? 'cursor-pointer' : ''}`} value={item?.value || ''} placeholder="-" onChange={(e) => updateWellValue(row, col, e.target.value)}/>
         {stdIdx !== -1 && <span className="absolute top-0.5 right-0.5 w-3 h-3 bg-white text-indigo-600 text-[8px] rounded-full flex items-center justify-center font-bold z-10 shadow-sm">{stdIdx+1}</span>}
       </div>
     );
+  };
+
+  const handlePresetSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const key = e.target.value;
+    if (key === 'custom') {
+      setStdCurvePoints(Array.from({ length: 10 }, (_, i) => ({ x: '', y: '', id: `pt-${Date.now()}-${i}` })));
+    } else {
+      const vals = PRESETS[key];
+      if (vals) {
+        setStdCurvePoints(Array.from({ length: 10 }, (_, i) => ({
+          x: vals[i] || '',
+          y: '',
+          id: `pt-${Date.now()}-${i}`
+        })));
+      }
+    }
   };
 
   return (
@@ -536,7 +535,7 @@ function App() {
       <header className="flex-none h-16 px-6 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between shadow-sm z-50">
         <div className="flex items-center gap-4">
           <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-indigo-200 dark:shadow-none shadow-lg"><FlaskConical className="text-white" size={22}/></div>
-          <div><h1 className="font-extrabold text-xl tracking-tight leading-none">{t.appTitle}</h1><p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mt-1">Research Workspace</p></div>
+          <div><h1 className="font-extrabold text-xl tracking-tight leading-none">{t.appTitle}</h1><p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mt-1">Created by Jheng</p></div>
         </div>
         <div className="flex items-center gap-2">
           {view === 'results' && (<button onClick={handleExport} disabled={exporting} className="hidden md:flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 active:scale-95 transition-all mr-2">{exporting ? <Loader2 size={16} className="animate-spin"/> : <FileSpreadsheet size={16}/>} {t.export}</button>)}
@@ -555,16 +554,33 @@ function App() {
 
       <main className="flex-1 overflow-hidden relative">
         {view === 'home' && (
-          <div className="h-full flex flex-col items-center justify-center p-6 animate-in fade-in duration-500">
-            <div className="text-center mb-8"><h2 className="text-3xl lg:text-4xl font-black mb-2 text-zinc-800 dark:text-zinc-100">{t.subtitle}</h2><p className="text-zinc-400 font-medium text-sm">{t.desc}</p></div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full max-w-2xl">
-              {[{ icon: <Camera size={24}/>, title: t.scanPlate, sub: t.useCamera, action: () => setView('camera'), primary: true }, { icon: <Upload size={24}/>, title: t.uploadImage, sub: t.fromGallery, action: () => document.getElementById('fileInput')?.click() }, { icon: <Keyboard size={24}/>, title: t.manualEntry, sub: t.noImage, action: () => setView('results') }].map((card, i) => (
-                <button key={i} onClick={card.action} className={`group p-6 rounded-2xl flex flex-col items-center gap-3 transition-all hover:-translate-y-1 shadow-lg shadow-zinc-200/50 dark:shadow-none border ${card.primary ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-white dark:bg-zinc-900 border-zinc-100 dark:border-zinc-800'}`}>
-                  <div className={`p-3 rounded-xl ${card.primary ? 'bg-white/20' : 'bg-zinc-50 dark:bg-zinc-800 text-indigo-600'}`}>{card.icon}</div>
-                  <div className="text-center"><div className="text-base font-bold">{card.title}</div><div className={`text-[10px] uppercase tracking-wider mt-1 opacity-70 ${card.primary ? 'text-indigo-100' : ''}`}>{card.sub}</div></div>
-                </button>
-              ))}
-              <input id="fileInput" type="file" accept="image/*" onChange={handleImageSelect} className="hidden"/>
+          // 1. 外层增加 overflow-y-auto 允许在高度不够时滚动
+          // 2. 使用 min-h-full 替代 h-full，确保内容少时居中，内容多时可撑开
+          <div className="w-full h-full overflow-y-auto no-scrollbar">
+            <div className="min-h-full flex flex-col items-center justify-center p-6 animate-in fade-in duration-500 py-10 sm:py-0">
+              
+              {/* 3. 调整标题间距：手机上用 mb-4，大屏用 mb-8 */}
+              <div className="text-center mb-4 sm:mb-8">
+                <h2 className="text-3xl lg:text-4xl font-black mb-2 text-zinc-800 dark:text-zinc-100">{t.subtitle}</h2>
+                <p className="text-zinc-400 font-medium text-sm">{t.desc}</p>
+              </div>
+
+              {/* 4. 关键修改：将 md:grid-cols-3 改为 sm:grid-cols-3 */}
+              {/* 这样手机横屏（通常 >640px）就会横向排列按钮，不再垂直堆叠 */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-2xl">
+                {[
+                  { icon: <Camera size={24}/>, title: t.scanPlate, sub: t.useCamera, action: () => setView('camera'), primary: true }, 
+                  { icon: <Upload size={24}/>, title: t.uploadImage, sub: t.fromGallery, action: () => document.getElementById('fileInput')?.click() }, 
+                  { icon: <Keyboard size={24}/>, title: t.manualEntry, sub: t.noImage, action: () => setView('results') }
+                ].map((card, i) => (
+                  <button key={i} onClick={card.action} className={`group p-6 rounded-2xl flex flex-col items-center gap-3 transition-all hover:-translate-y-1 shadow-lg shadow-zinc-200/50 dark:shadow-none border ${card.primary ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-white dark:bg-zinc-900 border-zinc-100 dark:border-zinc-800'}`}>
+                    <div className={`p-3 rounded-xl ${card.primary ? 'bg-white/20' : 'bg-zinc-50 dark:bg-zinc-800 text-indigo-600'}`}>{card.icon}</div>
+                    <div className="text-center"><div className="text-base font-bold">{card.title}</div><div className={`text-[10px] uppercase tracking-wider mt-1 opacity-70 ${card.primary ? 'text-indigo-100' : ''}`}>{card.sub}</div></div>
+                  </button>
+                ))}
+                <input id="fileInput" type="file" accept="image/*" onChange={handleImageSelect} className="hidden"/>
+              </div>
+
             </div>
           </div>
         )}
@@ -588,132 +604,152 @@ function App() {
         {view === 'camera' && <CameraView onCapture={(img) => { setImage(img); setView('preview'); }} onBack={() => setView('home')} t={t}/>}
 
         {view === 'results' && (
-          <div className="h-full flex flex-col p-4 lg:p-6 gap-6 overflow-y-auto pb-24">
-            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
-              {/* PANEL 1: PLATE EXPLORER */}
-              <div className="lg:col-span-7 xl:col-span-8 bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 flex flex-col shadow-sm transition-all relative xl:h-full xl:overflow-hidden h-auto min-h-[500px]">
-                <div className="p-4 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center h-[60px] flex-none bg-white dark:bg-zinc-900 z-10 relative">
-                  <h3 className="font-bold flex items-center gap-2 text-zinc-700 dark:text-zinc-200 text-sm"><LayoutGrid size={18} className="text-zinc-400"/> {t.plateMap}</h3>
-                </div>
-                {/* UPDATED: Added p-[10%] for 10% whitespace padding */}
-                <div className="flex-1 p-[10%] flex flex-col items-center justify-center bg-zinc-50/50 dark:bg-zinc-950/20 xl:overflow-auto overflow-visible">
-                   <div className={`min-w-fit w-full flex flex-col justify-center max-w-4xl mx-auto transition-all duration-300 ${showStandardGrid ? 'max-w-[95vh]' : ''}`}>
-                    {!showStandardGrid ? (
-                      <>
-                        <div className="grid grid-cols-[repeat(8,1fr)_auto] gap-px sm:gap-1 mb-1">
-                          {[...ROW_HEADERS].reverse().map((char, i) => (<div key={i} className="text-center text-[10px] sm:text-xs font-bold text-zinc-400 select-none">{char}</div>))}
-                          <div className="w-6 sm:w-8"></div>
+  <div className="h-full flex flex-col p-2 lg:p-6 gap-4 lg:gap-6 overflow-y-auto pb-24 no-scrollbar">
+    <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 min-h-0">
+      
+      {/* PANEL 1: PLATE MAP */}
+      <div className="lg:col-span-7 xl:col-span-8 bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 flex flex-col transition-all relative h-[500px] lg:h-[calc(100vh-140px)] xl:h-full overflow-hidden shadow-sm">
+        
+        {/* 1. 增加 padding (p-6 lg:p-10) 制造留白 */}
+        {/* 2. Flex + Center 确保孔板居中 */}
+        <div className="flex-1 w-full h-full min-h-0 p-6 lg:p-10 flex flex-col items-center justify-center bg-gray-10 dark:bg-zinc-950/20 overflow-hidden relative">
+           
+           {/* 3. 核心修复: 去掉 w-full h-full，改用 max-w-full max-h-full */}
+           {/* 这会让孔板尽可能大，但在触碰到宽或高的边界时停止，绝对不会被裁剪 */}
+           <div className={`transition-all duration-300 flex items-center justify-center w-full h-full`}>
+              
+              {!useStandardLayout ? (
+                /* === Mobile Portrait Layout (8列 x 12行) === */
+                /* 竖屏模式：保持 aspect-[2/3]，同时限制最大宽高 */
+                <div className="w-auto h-auto max-w-full max-h-full aspect-[2/3] flex flex-col justify-center m-auto shadow-sm">
+                  <div className="grid grid-cols-[repeat(8,1fr)_auto] gap-px sm:gap-1 mb-1">
+                    {[...ROW_HEADERS].reverse().map((char, i) => (<div key={i} className="text-center text-[10px] sm:text-xs font-bold text-zinc-400 select-none">{char}</div>))}
+                    <div className="w-6 sm:w-8"></div>
+                  </div>
+                  <div className="flex-1 flex flex-col justify-start gap-px sm:gap-1 min-h-0">
+                    {Array.from({length: 12}).map((_, rIdx) => {
+                      const rowNum = rIdx + 1;
+                      return (
+                        <div key={rowNum} className="flex-1 grid grid-cols-[repeat(8,1fr)_auto] gap-px sm:gap-1 items-center">
+                          {[...ROW_HEADERS].reverse().map((rowChar) => renderPlateCell(rowChar, rowNum))}
+                          <div className="w-6 sm:w-8 flex items-center justify-center text-[10px] sm:text-xs font-bold text-zinc-400 select-none">{rowNum}</div>
                         </div>
-                        <div className="flex flex-col justify-start gap-px sm:gap-1">
-                          {Array.from({length: 12}).map((_, rIdx) => {
-                            const rowNum = rIdx + 1;
-                            return (
-                              <div key={rowNum} className="grid grid-cols-[repeat(8,1fr)_auto] gap-px sm:gap-1 items-center">
-                                {[...ROW_HEADERS].reverse().map((rowChar) => renderPlateCell(rowChar, rowNum))}
-                                <div className="w-6 sm:w-8 flex items-center justify-center text-[10px] sm:text-xs font-bold text-zinc-400 select-none">{rowNum}</div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="grid grid-cols-[auto_repeat(12,1fr)] gap-px sm:gap-1 mb-1">
-                           <div className="w-6 sm:w-8"></div>
-                           {Array.from({length: 12}).map((_, i) => (<div key={i} className="text-center text-[10px] sm:text-xs font-bold text-zinc-400 select-none">{i+1}</div>))}
-                        </div>
-                        <div className="flex flex-col justify-start gap-px sm:gap-1 lg:flex-1">
-                          {ROW_HEADERS.map((rowChar, rIdx) => (
-                            <div key={rowChar} className="grid grid-cols-[auto_repeat(12,1fr)] gap-px sm:gap-1 items-center lg:flex-1">
-                              <div className="w-6 sm:w-8 flex items-center justify-center text-[10px] sm:text-xs font-bold text-zinc-400 select-none">{rowChar}</div>
-                              {Array.from({ length: 12 }).map((_, cIdx) => renderPlateCell(rowChar, cIdx + 1))}
-                            </div>
-                          ))}
-                        </div>
-                      </>
-                    )}
+                      );
+                    })}
                   </div>
                 </div>
-              </div>
-
-              {/* PANEL 2: ANALYSIS */}
-              <div className="lg:col-span-5 xl:col-span-4 bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden shadow-sm h-[600px] xl:h-full transition-all relative">
-                <div className="p-2.5 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center h-[60px] flex-none bg-white dark:bg-zinc-900">
-                   <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-lg p-1 gap-1">
-                      <button onClick={() => setAnalysisTab('calibration')} className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${analysisTab === 'calibration' ? 'bg-white dark:bg-zinc-700 shadow-sm text-indigo-600 dark:text-indigo-300' : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200'}`}><TrendingUp size={14} className={analysisTab === 'calibration' ? 'text-indigo-500' : 'opacity-50'}/>{t.calibration}</button>
-                      <button onClick={() => setAnalysisTab('samples')} className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${analysisTab === 'samples' ? 'bg-white dark:bg-zinc-700 shadow-sm text-emerald-600 dark:text-emerald-300' : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200'}`}><TestTube2 size={14} className={analysisTab === 'samples' ? 'text-emerald-500' : 'opacity-50'}/>{t.samples}</button>
-                   </div>
-                   {analysisTab === 'calibration' && (<button onClick={() => { setSelectionTarget('std'); setIsStdSelecting(!isStdSelecting); }} className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all border ${isStdSelecting ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:border-indigo-400'}`}>{isStdSelecting ? t.selecting : t.selectRange}</button>)}
-                   {analysisTab === 'samples' && (<button onClick={() => { setSelectionTarget('sample'); const nId = Date.now().toString(); setUnknownGroups(prev => [...prev, { id: nId, name: `${t.sampleName} ${prev.length+1}`, commonDilution: 1, color: GROUP_COLORS[prev.length % GROUP_COLORS.length].name, wells: [] }]); setEditingGroupId(nId); }} className="px-3 py-1.5 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-lg text-[10px] font-bold hover:scale-105 active:scale-95 transition-all flex items-center gap-1"><Plus size={12}/> {t.newGroup}</button>)}
+              ) : (
+                /* === Tablet/Desktop Layout (12列 x 8行) === */
+                /* 横屏模式：保持 aspect-[13/9]，同时限制最大宽高 */
+                <div className="w-auto h-auto max-w-full max-h-full aspect-[13/9] flex flex-col justify-center m-auto shadow-sm">
+                  <div className="grid grid-cols-[auto_repeat(12,1fr)] gap-px sm:gap-1 mb-1 flex-none">
+                     <div className="w-6 sm:w-8"></div>
+                     {Array.from({length: 12}).map((_, i) => (<div key={i} className="text-center text-[10px] sm:text-xs font-bold text-zinc-400 select-none">{i+1}</div>))}
+                  </div>
+                  <div className="flex-1 flex flex-col justify-start gap-px sm:gap-1 min-h-0">
+                    {ROW_HEADERS.map((rowChar, rIdx) => (
+                      <div key={rowChar} className="flex-1 grid grid-cols-[auto_repeat(12,1fr)] gap-px sm:gap-1 items-center">
+                        <div className="w-6 sm:w-8 flex items-center justify-center text-[10px] sm:text-xs font-bold text-zinc-400 select-none">{rowChar}</div>
+                        {Array.from({ length: 12 }).map((_, cIdx) => renderPlateCell(rowChar, cIdx + 1))}
+                      </div>
+                    ))}
+                  </div>
                 </div>
+              )}
+           </div>
+        </div>
+      </div>
 
-                <div className="flex-1 overflow-hidden relative flex flex-col">
-                  {analysisTab === 'calibration' && (
-                    <div className="flex-1 flex flex-col min-h-0 animate-in fade-in slide-in-from-right-2 duration-300">
-                       <div className="flex-1 p-2 relative bg-zinc-50/50 dark:bg-zinc-950/20 w-full min-h-0">
-                            {fitResult && (<div className="absolute top-4 right-4 z-10 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-md border border-zinc-200 dark:border-zinc-700 p-2.5 rounded-xl shadow-sm flex flex-col gap-1 pointer-events-none"><div className="flex items-center justify-between gap-4"><span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">{t.summaryR2}</span><span className={`text-xs font-mono font-bold ${fitQuality === 'good' ? 'text-emerald-500' : fitQuality === 'warn' ? 'text-amber-500' : 'text-red-500'}`}>{fitResult.r2.toFixed(4)}</span></div><div className="text-[10px] font-medium text-zinc-500 font-mono">y={fitResult.slope.toFixed(3)}x {fitResult.intercept >= 0 ? '+' : ''}{fitResult.intercept.toFixed(3)}</div></div>)}
-                            {stdCurvePoints.some(p => p.y) ? (<StandardCurveChart points={stdCurvePoints} slope={fitResult?.slope} intercept={fitResult?.intercept} t={t}/>) : (<div className="h-full flex flex-col items-center justify-center text-zinc-300 gap-2"><TrendingUp size={32} className="opacity-20"/><span className="text-xs italic">{t.noDataSelected}</span></div>)}
-                       </div>
-                       <div className="flex-none border-t border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 z-10 shadow-[0_-4px_15px_-3px_rgba(0,0,0,0.02)] flex flex-col">
-                          <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-50 dark:border-zinc-800">
-                             <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">{t.stdCurve}</span> 
-                             <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-medium text-zinc-500">{t.presets}</span>
-                                <select className="text-[10px] bg-zinc-50 dark:bg-zinc-800 border-none rounded px-2 py-1 outline-none font-bold text-zinc-700 dark:text-zinc-300 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors" onChange={(e) => { const vals = PRESETS[e.target.value]; if(vals) setStdCurvePoints(vals.map((x, i) => ({ x, y: '', id: `pt-${Date.now()}-${i}` }))); }} defaultValue=""><option value="" disabled>{t.selectPreset}</option><option value="BCA">BCA (0 - 0.5)</option><option value="Bradford">Bradford (0 - 1.5)</option></select>
-                             </div>
+      {/* --- PANEL 2: ANALYSIS --- */}
+      <div className="lg:col-span-5 xl:col-span-4 bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden shadow-sm h-[500px] lg:h-[calc(100vh-140px)] xl:h-full transition-all relative">
+        <div className="p-2.5 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center h-[60px] flex-none bg-white dark:bg-zinc-900">
+           <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-lg p-1 gap-1">
+              <button onClick={() => setAnalysisTab('calibration')} className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${analysisTab === 'calibration' ? 'bg-white dark:bg-zinc-700 shadow-sm text-indigo-600 dark:text-indigo-300' : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200'}`}><TrendingUp size={14} className={analysisTab === 'calibration' ? 'text-indigo-500' : 'opacity-50'}/>{t.calibration}</button>
+              <button onClick={() => setAnalysisTab('samples')} className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${analysisTab === 'samples' ? 'bg-white dark:bg-zinc-700 shadow-sm text-emerald-600 dark:text-emerald-300' : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200'}`}><TestTube2 size={14} className={analysisTab === 'samples' ? 'text-emerald-500' : 'opacity-50'}/>{t.samples}</button>
+           </div>
+           {analysisTab === 'calibration' && (<button onClick={() => { setSelectionTarget('std'); setIsStdSelecting(!isStdSelecting); }} className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all border ${isStdSelecting ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:border-indigo-400'}`}>{isStdSelecting ? t.selecting : t.selectRange}</button>)}
+           {analysisTab === 'samples' && (<button onClick={() => { setSelectionTarget('sample'); const nId = Date.now().toString(); setUnknownGroups(prev => [...prev, { id: nId, name: `${t.sampleName} ${prev.length+1}`, commonDilution: 1, color: GROUP_COLORS[prev.length % GROUP_COLORS.length].name, wells: [] }]); setEditingGroupId(nId); }} className="px-3 py-1.5 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-lg text-[10px] font-bold hover:scale-105 active:scale-95 transition-all flex items-center gap-1"><Plus size={12}/> {t.newGroup}</button>)}
+        </div>
+
+        <div className="flex-1 overflow-hidden relative flex flex-col min-h-0">
+          {analysisTab === 'calibration' && (
+            <div className="flex-1 flex flex-col min-h-0 animate-in fade-in slide-in-from-right-2 duration-300">
+               <div className="flex-1 p-2 relative bg-zinc-50/50 dark:bg-zinc-950/20 w-full min-h-0">
+                    {fitResult && (<div className="absolute top-4 right-4 z-10 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-md border border-zinc-200 dark:border-zinc-700 p-2.5 rounded-xl shadow-sm flex flex-col gap-1 pointer-events-none"><div className="flex items-center justify-between gap-4"><span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">{t.summaryR2}</span><span className={`text-xs font-mono font-bold ${fitQuality === 'good' ? 'text-emerald-500' : fitQuality === 'warn' ? 'text-amber-500' : 'text-red-500'}`}>{fitResult.r2.toFixed(4)}</span></div><div className="text-[10px] font-medium text-zinc-500 font-mono">y={fitResult.slope.toFixed(3)}x {fitResult.intercept >= 0 ? '+' : ''}{fitResult.intercept.toFixed(3)}</div></div>)}
+                    {stdCurvePoints.some(p => p.y) ? (<StandardCurveChart points={stdCurvePoints} slope={fitResult?.slope} intercept={fitResult?.intercept} t={t}/>) : (<div className="h-full flex flex-col items-center justify-center text-zinc-300 gap-2"><TrendingUp size={32} className="opacity-20"/><span className="text-xs italic">{t.noDataSelected}</span></div>)}
+               </div>
+               <div className="flex-none border-t border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 z-10 flex flex-col">
+                  <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-50 dark:border-zinc-800">
+                     <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">{t.stdCurve}</span> 
+                     <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-medium text-zinc-500">{t.presets}</span>
+                        <select className="text-[10px] bg-zinc-50 dark:bg-zinc-800 border-none rounded px-2 py-1 outline-none font-bold text-zinc-700 dark:text-zinc-300 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors" onChange={handlePresetSelect} defaultValue="">
+                          <option value="" disabled>{t.selectPreset}</option>
+                          <option value="BCA">BCA (0 - 0.5)</option>
+                          <option value="Bradford">Bradford (0 - 1.5)</option>
+                          <option value="custom">{t.custom}</option>
+                        </select>
+                     </div>
+                  </div>
+                  <div className="p-3 grid grid-cols-5 gap-2 no-scrollbar overflow-y-auto max-h-40">
+                     {stdCurvePoints.map((pt, i) => (
+                       <div key={pt.id} className="flex-none w-full flex flex-col gap-1 group">
+                          <div className="flex justify-between items-center px-0.5"><span className="text-[9px] font-mono text-zinc-400">#{i+1}</span></div>
+                          <div className={`relative rounded-md border transition-all ${pt.sourceWellId ? 'border-indigo-500 bg-indigo-50/20' : 'border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 focus-within:border-zinc-400'}`}>
+                            <input 
+                              value={pt.x} 
+                              onChange={e => setStdCurvePoints(prev => prev.map(p => p.id === pt.id ? {...p, x: e.target.value} : p))} 
+                              className="w-full text-center text-[10px] font-mono font-bold bg-transparent outline-none py-1.5 text-zinc-700 dark:text-zinc-200 placeholder-zinc-300" 
+                              placeholder="-"
+                            />
+                            {pt.sourceWellId && <div className="absolute top-0 right-0 w-1.5 h-1.5 bg-indigo-500 rounded-full translate-x-1/3 -translate-y-1/3 shadow-sm ring-1 ring-white dark:ring-zinc-900"></div>}
                           </div>
-                          <div className="overflow-x-auto p-3 flex items-start gap-3">
-                             {stdCurvePoints.map((pt, i) => (
-                               <div key={pt.id} className="flex-none w-14 flex flex-col gap-1 group">
-                                  <div className="flex justify-between items-center px-0.5"><span className="text-[9px] font-mono text-zinc-400">#{i+1}</span><button onClick={() => setStdCurvePoints(prev => prev.filter(p => p.id !== pt.id))} className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><X size={10}/></button></div>
-                                  <div className={`relative rounded-md border transition-all ${pt.sourceWellId ? 'border-indigo-500 bg-indigo-50/20' : 'border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 focus-within:border-zinc-400'}`}><input value={pt.x} onChange={e => setStdCurvePoints(prev => prev.map(p => p.id === pt.id ? {...p, x: e.target.value} : p))} className="w-full text-center text-[10px] font-mono font-bold bg-transparent outline-none py-1.5 text-zinc-700 dark:text-zinc-200 placeholder-zinc-300" placeholder="0"/>{pt.sourceWellId && <div className="absolute top-0 right-0 w-1.5 h-1.5 bg-indigo-500 rounded-full translate-x-1/3 -translate-y-1/3 shadow-sm ring-1 ring-white dark:ring-zinc-900"></div>}</div>
-                                  <div className="h-3 text-center">{pt.y && <span className="text-[9px] font-mono text-zinc-400">{pt.y}</span>}</div>
-                               </div>
-                             ))}
-                             <button onClick={() => setStdCurvePoints(prev => [...prev, { x: '', y: '', id: Date.now().toString() }])} className="flex-none w-8 h-[50px] mt-[17px] rounded-lg border border-dashed border-zinc-200 dark:border-zinc-700 flex items-center justify-center text-zinc-400 hover:border-indigo-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/10 transition-all"><Plus size={14}/></button>
-                          </div>
-                       </div>
-                    </div>
-                  )}
-                  {analysisTab === 'samples' && (
-                    <div className="flex-1 overflow-y-auto p-4 animate-in fade-in slide-in-from-right-2 duration-300 bg-zinc-50/50 dark:bg-zinc-950/20">
-                       {unknownGroups.length === 0 ? (<div className="h-full flex flex-col items-center justify-center text-zinc-400 py-10"><TestTube2 size={48} className="mb-3 opacity-20"/><p className="text-xs font-medium">{t.noGroups}</p></div>) : (
-                        <div className="space-y-3">
-                          {unknownGroups.map(group => {
-                            const color = GROUP_COLORS.find(c => c.name === group.color)!;
-                            const stats = calculateStats(group.wells.map(w => calculateConc(w.od, fitResult, w.dilution)));
-                            const isEditing = editingGroupId === group.id;
-                            return (
-                              <div key={group.id} onClick={() => { setEditingGroupId(group.id); setSelectionTarget('sample'); }} className={`bg-white dark:bg-zinc-900 rounded-xl border transition-all cursor-pointer shadow-sm overflow-hidden ${isEditing ? 'border-indigo-500 ring-1 ring-indigo-500 shadow-md shadow-indigo-500/10' : 'border-zinc-200 dark:border-zinc-800 hover:border-zinc-300'}`}>
-                                <div className={`px-3 py-2.5 flex items-center gap-3 ${isEditing ? 'bg-zinc-50 dark:bg-zinc-800/50' : ''}`}>
-                                  <div className={`w-2.5 h-2.5 rounded-full ${color.bg}`}/>
-                                  <input value={group.name} onChange={e => setUnknownGroups(prev => prev.map(g => g.id === group.id ? {...g, name: e.target.value} : g))} onClick={(e) => e.stopPropagation()} className="font-bold text-xs sm:text-sm bg-transparent outline-none flex-1 text-zinc-700 dark:text-zinc-200"/>
-                                  {!isEditing && (<div className="flex items-center gap-2 text-[10px] text-zinc-400 font-mono"><span className="font-bold text-zinc-600 dark:text-zinc-300">{stats.mean.toFixed(2)}</span><span className="text-zinc-300">|</span><span>CV {stats.cv.toFixed(0)}%</span></div>)}
-                                  <div className="flex items-center gap-2"><span className="text-[9px] bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-500 font-mono font-bold">n={group.wells.length}</span>{isEditing && <button onClick={(e) => { e.stopPropagation(); setUnknownGroups(prev => prev.filter(g => g.id !== group.id)); }} className="text-zinc-300 hover:text-red-500 p-0.5"><X size={14}/></button>}</div>
-                                </div>
-                                {isEditing && (
-                                  <div className="p-3 border-t border-zinc-100 dark:border-zinc-800 animate-in slide-in-from-top-1 duration-200">
-                                    <div className="flex gap-2 mb-3">
-                                       {[{ l: t.mean, v: stats.mean.toFixed(2) }, { l: t.sd, v: stats.sd.toFixed(2) }, { l: t.cv, v: stats.cv.toFixed(1) + '%' }].map((s, i) => (<div key={i} className="flex-1 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-1.5 text-center border border-zinc-100 dark:border-zinc-800"><div className="text-[8px] text-zinc-400 font-bold uppercase tracking-tight">{s.l}</div><div className="text-xs font-mono font-bold text-zinc-600 dark:text-zinc-300">{s.v}</div></div>))}
-                                    </div>
-                                    <div className="flex items-center justify-between mb-3 px-1"><label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide flex items-center gap-1"><Beaker size={10}/> {t.setAllDil}</label><input type="number" value={group.commonDilution} onClick={(e)=>e.stopPropagation()} onChange={e => { const val = parseFloat(e.target.value)||1; setUnknownGroups(prev => prev.map(g => g.id === group.id ? {...g, commonDilution: val, wells: g.wells.map(w => ({...w, dilution: val}))} : g)); }} className="w-16 text-right text-xs bg-zinc-100 dark:bg-zinc-800 px-2 py-1 rounded border-none outline-none focus:ring-1 focus:ring-indigo-500 font-mono font-bold"/></div>
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-1">
-                                      {group.wells.map((w, i) => (<div key={i} className="flex flex-col bg-zinc-50 dark:bg-zinc-800/30 border border-zinc-100 dark:border-zinc-800 rounded-md p-1.5 group/row relative overflow-hidden"><div className="flex justify-between items-start"><span className="font-mono font-bold text-[10px] text-zinc-400">{w.row}{w.col}</span><button onClick={(e) => { e.stopPropagation(); setUnknownGroups(prev => prev.map(g => g.id === group.id ? {...g, wells: g.wells.filter((_, idx) => idx !== i)} : g)); }} className="text-zinc-300 hover:text-red-500 opacity-0 group-hover/row:opacity-100 absolute top-1 right-1"><X size={10}/></button></div><div className="flex justify-between items-end mt-1"><span className="text-[9px] text-zinc-400">x{w.dilution}</span><span className="font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400">{calculateConc(w.od, fitResult, w.dilution).toFixed(2)}</span></div></div>))}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
+                          <div className="h-3 text-center">{pt.y && <span className="text-[9px] font-mono text-zinc-400">{pt.y}</span>}</div>
                         </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
+                     ))}
+                  </div>
+               </div>
             </div>
-          </div>
-        )}
+          )}
+          {analysisTab === 'samples' && (
+            <div className="flex-1 overflow-y-auto p-4 animate-in fade-in slide-in-from-right-2 duration-300 bg-zinc-50/50 dark:bg-zinc-950/20 no-scrollbar">
+               {unknownGroups.length === 0 ? (<div className="h-full flex flex-col items-center justify-center text-zinc-400 py-10"><TestTube2 size={48} className="mb-3 opacity-20"/><p className="text-xs font-medium">{t.noGroups}</p></div>) : (
+                <div className="space-y-3">
+                  {unknownGroups.map(group => {
+                    const color = GROUP_COLORS.find(c => c.name === group.color)!;
+                    const stats = calculateStats(group.wells.map(w => calculateConc(w.od, fitResult, w.dilution)));
+                    const isEditing = editingGroupId === group.id;
+                    return (
+                      <div key={group.id} onClick={() => { setEditingGroupId(group.id); setSelectionTarget('sample'); }} className={`bg-white dark:bg-zinc-900 rounded-xl border transition-all cursor-pointer shadow-sm overflow-hidden ${isEditing ? 'border-indigo-500 ring-1 ring-indigo-500 shadow-md shadow-indigo-500/10' : 'border-zinc-200 dark:border-zinc-800 hover:border-zinc-300'}`}>
+                        <div className={`px-3 py-2.5 flex items-center gap-3 ${isEditing ? 'bg-zinc-50 dark:bg-zinc-800/50' : ''}`}>
+                          <div className={`w-2.5 h-2.5 rounded-full ${color.bg}`}/>
+                          <input value={group.name} onChange={e => setUnknownGroups(prev => prev.map(g => g.id === group.id ? {...g, name: e.target.value} : g))} onClick={(e) => e.stopPropagation()} className="font-bold text-xs sm:text-sm bg-transparent outline-none flex-1 text-zinc-700 dark:text-zinc-200"/>
+                          {!isEditing && (<div className="flex items-center gap-2 text-[10px] text-zinc-400 font-mono"><span className="font-bold text-zinc-600 dark:text-zinc-300">{stats.mean.toFixed(2)}</span><span className="text-zinc-300">|</span><span>CV {stats.cv.toFixed(0)}%</span></div>)}
+                          <div className="flex items-center gap-2"><span className="text-[9px] bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-500 font-mono font-bold">n={group.wells.length}</span>{isEditing && <button onClick={(e) => { e.stopPropagation(); setUnknownGroups(prev => prev.filter(g => g.id !== group.id)); }} className="text-zinc-300 hover:text-red-500 p-0.5"><X size={14}/></button>}</div>
+                        </div>
+                        {isEditing && (
+                          <div className="p-3 border-t border-zinc-100 dark:border-zinc-800 animate-in slide-in-from-top-1 duration-200">
+                            <div className="flex gap-2 mb-3">
+                               {[{ l: t.mean, v: stats.mean.toFixed(2) }, { l: t.sd, v: stats.sd.toFixed(2) }, { l: t.cv, v: stats.cv.toFixed(1) + '%' }].map((s, i) => (<div key={i} className="flex-1 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-1.5 text-center border border-zinc-100 dark:border-zinc-800"><div className="text-[8px] text-zinc-400 font-bold uppercase tracking-tight">{s.l}</div><div className="text-xs font-mono font-bold text-zinc-600 dark:text-zinc-300">{s.v}</div></div>))}
+                            </div>
+                            <div className="flex items-center justify-between mb-3 px-1"><label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide flex items-center gap-1"><Beaker size={10}/> {t.setAllDil}</label><input type="number" value={group.commonDilution} onClick={(e)=>e.stopPropagation()} onChange={e => { const val = parseFloat(e.target.value)||1; setUnknownGroups(prev => prev.map(g => g.id === group.id ? {...g, commonDilution: val, wells: g.wells.map(w => ({...w, dilution: val}))} : g)); }} className="w-16 text-right text-xs bg-zinc-100 dark:bg-zinc-800 px-2 py-1 rounded border-none outline-none focus:ring-1 focus:ring-indigo-500 font-mono font-bold"/></div>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-1 no-scrollbar">
+                              {group.wells.map((w, i) => (<div key={i} className="flex flex-col bg-zinc-50 dark:bg-zinc-800/30 border border-zinc-100 dark:border-zinc-800 rounded-md p-1.5 group/row relative overflow-hidden"><div className="flex justify-between items-start"><span className="font-mono font-bold text-[10px] text-zinc-400">{w.row}{w.col}</span><button onClick={(e) => { e.stopPropagation(); setUnknownGroups(prev => prev.map(g => g.id === group.id ? {...g, wells: g.wells.filter((_, idx) => idx !== i)} : g)); }} className="text-zinc-300 hover:text-red-500 opacity-0 group-hover/row:opacity-100 absolute top-1 right-1"><X size={10}/></button></div><div className="flex justify-between items-end mt-1"><span className="text-[9px] text-zinc-400">x{w.dilution}</span><span className="font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400">{calculateConc(w.od, fitResult, w.dilution).toFixed(2)}</span></div></div>))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+               )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
+)
       </main>
     </div>
   );
